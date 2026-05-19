@@ -412,21 +412,8 @@ court pour beaucoup d'adresses réelles.
 À supprimer en production (ligne `INSERT INTO utisateur` à la fin du
 `schema.sql`).
 
-### Ce qui n'est PAS implémenté (mais facile à ajouter)
 
-L'énoncé liste aussi :
 
-- Un **éditeur de niveau manuel** (en C ou en web). Le format est documenté
-  ci-dessus, donc l'ajouter consiste à écrire un éditeur de grille qui produit
-  ce format texte.
-- Un **générateur de niveaux aléatoires** (en C). On peut le scaffolder en
-  partant de la structure du solveur (`solver.h` connaît déjà le format).
-  Algo possible : génération récursive de labyrinthe (DFS backtracking), puis
-  placement aléatoire des items, puis appel au solveur pour valider.
 
-Ces deux modules ne dépendent pas de ce qui est déjà livré et peuvent être
-ajoutés en parallèle par les autres membres de l'équipe.
-
----
 
 *Glisse, déduit, survis.* ⚔
