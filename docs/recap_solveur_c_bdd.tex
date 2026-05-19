@@ -1,0 +1,491 @@
+% ============================================================
+% Les fantômes d'Ombrequatre — Recapitulatif solveur C + base de donnees
+% Copier-coller ce fichier sur Overleaf (compiler avec pdfLaTeX)
+% ============================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    urlcolor=blue!60!black,
+    citecolor=blue!60!black
+}
+
+\definecolor{codebg}{RGB}{245,245,250}
+\definecolor{keyword}{RGB}{0,80,160}
+
+\lstdefinestyle{kllisting}{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{gray!40},
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    literate={é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {à}{{\`a}}1
+             {ù}{{\`u}}1 {ô}{{\^o}}1 {î}{{\^i}}1 {ç}{{\c{c}}}1
+             {É}{{\'E}}1 {ë}{{\"e}}1
+}
+
+\lstdefinestyle{kllistingNoFrame}{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false
+}
+
+\title{%
+  \textbf{Les fantômes d'Ombrequatre}\\[0.4em]
+  \large Recapitulatif detaille --- Solveur C, base de donnees\\
+  \large et export de solutions en fichiers \texttt{.txt}
+}
+\author{CIR1 2025--2026 --- Groupe 4doigtsdelamain}
+\date{Mai 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%------------------------------------------------------------
+\section{Objectif du travail realise}
+%------------------------------------------------------------
+
+Ce document recapitule l'ensemble des developpements realises pour repondre a la demande suivante :
+
+\begin{quote}
+\textit{Proposer et coder une solution pour le solveur en C prenant en compte les niveaux a partir de la base de donnees, et renvoyer la solution sous la forme d'un fichier \texttt{.txt} pour traitement ulterieur.}
+\end{quote}
+
+\textbf{Points cles :}
+\begin{itemize}
+    \item Les niveaux sont lus depuis MySQL (table \texttt{niveau}, colonne \texttt{map}).
+    \item Le calcul de la solution est effectue \textbf{exclusivement en C} (BFS existant dans \texttt{solver/solver.c}).
+    \item Chaque niveau produit un fichier texte structure dans \texttt{output/solutions/}.
+    \item Le solveur JavaScript (\texttt{solver-worker.js}) et le site web \textbf{n'ont pas ete modifies} dans cette etape : il s'agit d'un pipeline \textbf{parallele}, pret pour import futur en BDD.
+\end{itemize}
+
+%------------------------------------------------------------
+\section{Contexte du projet}
+%------------------------------------------------------------
+
+\subsection{Jeu et mecanique modelisee}
+
+Les fantômes d'Ombrequatre est un jeu de labyrinthe ou le chevalier :
+\begin{itemize}
+    \item \textbf{glisse} dans une direction (U/D/L/R) jusqu'a un mur ou un croisement ;
+    \item compte \textbf{un coup} par glissement (quelle que soit la longueur) ;
+    \item \textbf{ramasse} les gemmes sur le trajet (\texttt{.}, \texttt{o}, \texttt{c}) ;
+    \item ne peut \textbf{pas} choisir la direction opposee au coup precedent.
+\end{itemize}
+
+\textbf{Objectif du solveur :} trouver la sequence de glissements de \textbf{longueur minimale} qui ramasse toutes les gemmes (BFS = parcours en largeur optimal).
+
+\subsection{Etat du projet avant cette evolution}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Composant} & \textbf{Role} \\
+\midrule
+\texttt{solver/solver.c} & BFS C : \texttt{kl\_solve()} (gems-only), \texttt{kl\_solve\_safe()} (R/G/B) \\
+\texttt{solver/main.c} & CLI unitaire (\texttt{./solver level.txt}) \\
+\texttt{web/js/solver-worker.js} & BFS en navigateur (Worker), jaune inclus \\
+\texttt{web/api/get\_solution.php} & Lit \texttt{solution\_cache} en BDD \\
+Table \texttt{niveau} & \texttt{map}, \texttt{solution\_cache}, \texttt{solution\_safe} \\
+\bottomrule
+\end{tabular}
+\caption{Composants existants}
+\end{table}
+
+%------------------------------------------------------------
+\section{Architecture retenue}
+%------------------------------------------------------------
+
+Plutot que de lier le programme C directement a MySQL (\texttt{libmysqlclient}, compilation lourde sous Windows/MAMP), l'architecture adoptee est en \textbf{deux etapes} :
+
+\begin{enumerate}
+    \item \textbf{PHP CLI} --- connexion PDO, export des cartes et creation d'un manifeste.
+    \item \textbf{C (\texttt{solve\_db})} --- lecture du manifeste, resolution, ecriture des fichiers solution.
+\end{enumerate}
+
+Cette approche correspond a la \textbf{voie A} du document d'architecture (PHP orchestre, C calcule).
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    node distance=1.1cm and 1.8cm,
+    box/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.9cm, align=center, font=\small},
+    db/.style={box, fill=blue!8},
+    php/.style={box, fill=green!10},
+    file/.style={box, fill=orange!10},
+    c/.style={box, fill=red!8}
+]
+    \node[db] (mysql) {MySQL\\\texttt{niveau}};
+    \node[php, right=of mysql] (php) {\texttt{solveurCrenvoyanttxt/}\\\texttt{cli/solve\_from\_db.php}};
+    \node[file, below=0.9cm of php, xshift=-1.4cm] (levels) {\texttt{.../output/levels/}\\\texttt{level\_N.txt}};
+    \node[file, below=0.9cm of php, xshift=1.4cm] (manifest) {\texttt{levels\_manifest.txt}};
+    \node[c, right=3.2cm of php] (solve) {\texttt{solve\_db.exe}};
+    \node[file, right=of solve] (sol) {\texttt{.../output/solutions/}\\\texttt{level\_N\_solution.txt}};
+
+    \draw[-{Stealth}] (mysql) -- node[above, font=\scriptsize] {SELECT id, map} (php);
+    \draw[-{Stealth}] (php) -- (levels);
+    \draw[-{Stealth}] (php) -- (manifest);
+    \draw[-{Stealth}] (manifest) -- (solve);
+    \draw[-{Stealth}] (levels) -- node[above, font=\scriptsize, pos=0.35] {chemins} (solve);
+    \draw[-{Stealth}] (solve) -- (sol);
+\end{tikzpicture}
+\caption{Pipeline export BDD $\rightarrow$ resolution C $\rightarrow$ fichiers \texttt{.txt}}
+\end{figure}
+
+%------------------------------------------------------------
+\section{Fichiers crees}
+%------------------------------------------------------------
+
+\subsection{\texttt{solveurCrenvoyanttxt/src/batch\_io.h} et \texttt{batch\_io.c}}
+
+Couche utilitaire partagee entre le solveur unitaire (\texttt{solver}) et le batch (\texttt{solve\_db}).
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}p{4.2cm}p{9.5cm}@{}}
+\toprule
+\textbf{Fonction} & \textbf{Description} \\
+\midrule
+\texttt{kl\_sequence\_string()} & Convertit \texttt{kl\_solution\_t} en chaine compacte \texttt{UDLR} \\
+\texttt{kl\_solve\_level\_file()} & Parse, resout (safe-path + fallback optionnel) \\
+\texttt{kl\_write\_solution\_txt()} & Ecrit le fichier solution (format cle=valeur) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Logique de \texttt{kl\_solve\_level\_file()} :}
+\begin{enumerate}
+    \item \texttt{kl\_parse\_level\_file()} lit le fichier au format projet.
+    \item Si \texttt{use\_safe} : appel \texttt{kl\_solve\_safe()} (fantomes R/G/B ; \textbf{jaune ignore}).
+    \item Si echec et \texttt{allow\_fallback} : appel \texttt{kl\_solve()} (gems-only).
+    \item Renseigne \texttt{mode\_out} : \texttt{"safe-path"} ou \texttt{"gems-only"}.
+\end{enumerate}
+
+\subsection{\texttt{solveurCrenvoyanttxt/src/solve\_db.c}}
+
+Nouveau programme batch. Binaire produit : \texttt{solve\_db} ou \texttt{solve\_db.exe}.
+
+\textbf{Ligne de commande :}
+\begin{lstlisting}[style=kllisting]
+solve_db --manifest <fichier> --output-dir <dossier> [options]
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Option} & \textbf{Effet} \\
+\midrule
+\texttt{--manifest} & Fichier : une ligne \texttt{id|chemin/level\_N.txt} par niveau \\
+\texttt{--output-dir} & Dossier de sortie (\texttt{level\_<id>\_solution.txt}) \\
+\texttt{--safe-path} & BFS evitant R/G/B (defaut) \\
+\texttt{--gems-only} & BFS sans fantomes \\
+\texttt{--fallback} & Si safe-path echoue, retenter gems-only \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Comportement :} creation du dossier de sortie, lecture du manifeste, resolution niveau par niveau, resume console (OK / UNSOLVABLE / erreur), code retour 0 ou 1.
+
+\subsection{\texttt{solveurCrenvoyanttxt/cli/solve\_from\_db.php}}
+
+Point d'entree depuis la base de donnees.
+
+\begin{enumerate}
+    \item Charge \texttt{web/includes/config.php}.
+    \item Connexion PDO directe (hors \texttt{getDB()} HTTP).
+    \item \texttt{SELECT id, map FROM niveau ORDER BY id}.
+    \item Ecrit \texttt{output/levels/level\_<id>.txt} pour chaque niveau.
+    \item Ecrit \texttt{output/levels\_manifest.txt}.
+    \item Lance \texttt{solve\_db} avec \texttt{exec()}.
+\end{enumerate}
+
+\textbf{Options PHP :}
+\begin{itemize}
+    \item \texttt{--gems-only} : passe \texttt{--gems-only} au binaire C.
+    \item \texttt{--no-fallback} : pas de repli gems-only.
+\end{itemize}
+
+\subsection{Dossiers et documentation}
+
+\begin{itemize}
+    \item \texttt{solveurCrenvoyanttxt/output/levels/}, \texttt{output/solutions/}
+    \item \texttt{solveurCrenvoyanttxt/build.bat}, \texttt{Makefile}
+    \item \texttt{solveurCrenvoyanttxt/README.md} --- mode d'emploi
+\end{itemize}
+
+%------------------------------------------------------------
+\section{Fichiers modifies}
+%------------------------------------------------------------
+
+\subsection{\texttt{solveurCrenvoyanttxt/src/solve\_one.c}}
+
+CLI pour un seul niveau $\rightarrow$ fichier \texttt{.txt} :
+\begin{lstlisting}[style=kllisting]
+solve_one output/levels/level_1.txt --output output/solutions/level_1_solution.txt --safe-path --fallback
+\end{lstlisting}
+
+\subsection{\texttt{solveurCrenvoyanttxt/Makefile}}
+
+Lie le moteur partage \texttt{../solver/solver.c}. Cibles : \texttt{solve\_db}, \texttt{solve\_one}.
+
+Le dossier \texttt{solver/} du projet reste le CLI unitaire d'origine (\texttt{solver + main.c}), sans batch.
+
+%------------------------------------------------------------
+\section{Formats de donnees}
+%------------------------------------------------------------
+
+\subsection{Manifeste (\texttt{output/levels\_manifest.txt})}
+
+Une ligne par niveau :
+\begin{lstlisting}[style=kllistingNoFrame]
+1|c:\MAMP\htdocs\project\output\levels\level_1.txt
+2|c:\MAMP\htdocs\project\output\levels\level_2.txt
+\end{lstlisting}
+
+Separateur : \texttt{|}. Lignes vides et commentaires \texttt{\#} ignores.
+
+\subsection{Fichier solution (\texttt{level\_<id>\_solution.txt})}
+
+\begin{lstlisting}[style=kllisting]
+# Les fantômes d'Ombrequatre - solution export
+level_id=4
+level_file=C:\MAMP\htdocs\project\output\levels\level_4.txt
+solvable=yes
+mode=safe-path
+move_count=15
+sequence=DDRRUUUULLDRURD
+error=
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Champ} & \textbf{Signification} & \textbf{Usage futur BDD} \\
+\midrule
+\texttt{level\_id} & Identifiant & Cle \texttt{UPDATE} \\
+\texttt{solvable} & \texttt{yes} / \texttt{no} & Validation niveau \\
+\texttt{mode} & \texttt{safe-path} ou \texttt{gems-only} & \texttt{solution\_safe} (1 si safe) \\
+\texttt{move\_count} & Nombre de glissements & Statistiques \\
+\texttt{sequence} & Chaine \texttt{UDLR} & \texttt{solution\_cache} \\
+\texttt{error} & Message d'echec & Logs \\
+\bottomrule
+\end{tabular}
+\caption{Champs du fichier solution}
+\end{table}
+
+\subsection{Format niveau (entree, colonne \texttt{map})}
+
+\begin{lstlisting}[style=kllisting]
+W 9
+H 7
+P 1 1
+R 7 9
+MAP
+#########
+#.......#
+...
+\end{lstlisting}
+
+Symboles : \texttt{\#} mur, \texttt{.}/\texttt{o}/\texttt{c} collectibles, \texttt{*} portail, \texttt{\_} vide.
+
+%------------------------------------------------------------
+\section{Modes de resolution C}
+%------------------------------------------------------------
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llp{6.5cm}@{}}
+\toprule
+\textbf{Mode} & \textbf{Fonction} & \textbf{Fantomes} \\
+\midrule
+safe-path & \texttt{kl\_solve\_safe()} & R, V, B pre-calcules ; jaune \textbf{ignore} \\
+gems-only & \texttt{kl\_solve()} & Aucun \\
+fallback & safe puis gems-only & Comme ci-dessus \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Limite :} maximum \textbf{30 gemmes} (masque \texttt{uint32\_t}). Cap memoire BFS : environ 8 millions de noeuds (defini dans \texttt{solver.c}).
+
+\textbf{Ecart avec le Worker JS :} le solveur navigateur inclut le fantome \textbf{jaune} dans l'etat BFS ; le C en mode safe-path ne le fait pas encore. Les solutions \texttt{safe-path} C peuvent donc differer du jeu sur les niveaux avec \texttt{Y}.
+
+%------------------------------------------------------------
+\section{Procedure d'utilisation}
+%------------------------------------------------------------
+
+\subsection{Compilation (une fois)}
+
+\textbf{Windows (MinGW / MSYS2 dans le PATH) :}
+\begin{lstlisting}[style=kllisting]
+cd c:\MAMP\htdocs\project\solveurCrenvoyanttxt
+build.bat
+\end{lstlisting}
+
+\textbf{Linux / WSL / macOS :}
+\begin{lstlisting}[style=kllisting]
+cd solveurCrenvoyanttxt
+make
+\end{lstlisting}
+
+Produit : \texttt{solver.exe} et \texttt{solve\_db.exe} (ou sans extension sous Unix).
+
+\subsection{Execution du pipeline complet}
+
+\begin{enumerate}
+    \item Demarrer MySQL (MAMP).
+    \item Verifier \texttt{web/includes/config.php}.
+    \item S'assurer que la table \texttt{niveau} contient des niveaux.
+\end{enumerate}
+
+\begin{lstlisting}[style=kllisting]
+php c:\MAMP\htdocs\project\solveurCrenvoyanttxt\cli\solve_from_db.php
+\end{lstlisting}
+
+Variantes :
+\begin{lstlisting}[style=kllisting]
+php solveurCrenvoyanttxt/cli/solve_from_db.php --gems-only
+php solveurCrenvoyanttxt/cli/solve_from_db.php --no-fallback
+\end{lstlisting}
+
+\subsection{Utilisation manuelle du binaire C}
+
+\begin{lstlisting}[style=kllisting]
+solve_db --manifest output/levels_manifest.txt --output-dir output/solutions --safe-path --fallback
+\end{lstlisting}
+
+%------------------------------------------------------------
+\section{Arborescence ajoutee}
+%------------------------------------------------------------
+
+\begin{lstlisting}[style=kllisting]
+project/
+|-- solveurCrenvoyanttxt/
+|   |-- src/
+|   |   |-- batch_io.c, batch_io.h
+|   |   |-- solve_db.c, solve_one.c
+|   |-- cli/solve_from_db.php
+|   |-- output/levels/, output/solutions/
+|   |-- Makefile, build.bat, README.md
+|   `-- solve_db.exe (genere)
+`-- solver/                        (CLI unitaire, inchange)
+    |-- solver.c, solver.h, main.c
+    `-- Makefile
+\end{lstlisting}
+
+%------------------------------------------------------------
+\section{Lien avec la base de donnees}
+%------------------------------------------------------------
+
+Schema pertinent (\texttt{sql/schema.sql}) :
+
+\begin{lstlisting}[style=kllisting]
+CREATE TABLE `niveau` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `difficulte` INT(11) NOT NULL DEFAULT 1,
+  `score_max` INT(11) NOT NULL DEFAULT 0,
+  `map` TEXT NOT NULL,
+  `solution_cache` TEXT NULL,
+  `solution_safe` TINYINT(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`)
+);
+\end{lstlisting}
+
+\textbf{Realise :} lecture de \texttt{id} et \texttt{map} uniquement.
+
+\textbf{Non realise (traitement ulterieur demande par l'utilisateur) :}
+\begin{itemize}
+    \item \texttt{UPDATE} automatique de \texttt{solution\_cache} / \texttt{solution\_safe}
+    \item Modification de \texttt{get\_solution.php} ou \texttt{game.js}
+    \item Suppression du Worker JavaScript
+\end{itemize}
+
+%------------------------------------------------------------
+\section{Comparaison C vs JavaScript (rappel)}
+%------------------------------------------------------------
+
+Pour le \textbf{calcul BFS} pur, le C compile (\texttt{-O2}) est en general \textbf{plus rapide} que JavaScript (souvent 2x a 10x selon la taille du graphe). Une fois les solutions en cache BDD, l'affichage en jeu est \textbf{instantane} dans les deux cas.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Critere} & \textbf{C (batch)} & \textbf{Worker JS} \\
+\midrule
+Debit BFS & Eleve (natif) & Moyen (V8) \\
+Fantome jaune & Non (safe C) & Oui \\
+Usage en jeu & Via cache BDD & Direct ou cache \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%------------------------------------------------------------
+\section{Limites et points d'attention}
+%------------------------------------------------------------
+
+\begin{enumerate}
+    \item \textbf{Compilation requise} --- sans \texttt{solve\_db.exe}, PHP affiche une erreur avec les instructions \texttt{build.bat} / \texttt{make}.
+    \item \textbf{Fantome jaune} --- ecart possible entre solution C safe-path et moteur de jeu / Worker JS.
+    \item \textbf{Niveaux tres difficiles} --- risque d'epuisement des 8M noeuds BFS (pas de timeout ajoute dans le batch).
+    \item \textbf{Securite} --- \texttt{solve\_from\_db.php} est un script CLI ; ne pas l'exposer en URL publique.
+    \item \textbf{Environnement teste} --- \texttt{gcc} et \texttt{make} n'etaient pas dans le PATH Windows au moment du developpement ; compilation a valider localement.
+\end{enumerate}
+
+%------------------------------------------------------------
+\section{Evolutions prevues (non codees)}
+%------------------------------------------------------------
+
+\begin{itemize}
+    \item Script \texttt{cli/import\_solutions.php} : lire les \texttt{.txt} $\rightarrow$ \texttt{UPDATE niveau}.
+    \item Porter le fantome jaune dans \texttt{kl\_solve\_safe()} pour aligner C et JS.
+    \item Retirer \texttt{solver-worker.js} une fois tout importe en BDD.
+    \item Tache planifiee apres ajout d'un niveau en administration.
+\end{itemize}
+
+%------------------------------------------------------------
+\section{Synthese en une phrase}
+%------------------------------------------------------------
+
+\begin{quote}
+Un script PHP exporte tous les \texttt{map} de la table \texttt{niveau}, le programme C \texttt{solve\_db} les resout et produit un fichier texte structure par niveau dans \texttt{output/solutions/}, pret pour un import manuel ou automatise en base --- sans modifier le site web ni le solveur JavaScript a ce stade.
+\end{quote}
+
+\vfill
+\hrule
+\small
+\noindent
+\textbf{Fichier source LaTeX :} \texttt{docs/recap\_solveur\_c\_bdd.tex} --- Projet Les fantômes d'Ombrequatre, MAMP \texttt{htdocs/project}.
+
+\end{document}
