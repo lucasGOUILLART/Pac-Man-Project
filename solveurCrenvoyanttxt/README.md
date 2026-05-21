@@ -39,3 +39,5 @@ php solveurCrenvoyanttxt/cli/solve_from_db.php
 ```bat
 solve_one output\levels\level_1.txt --output output\solutions\level_1_solution.txt --safe-path --fallback
 ```
+
+testttstts
