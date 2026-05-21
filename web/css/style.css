@@ -1515,6 +1515,9 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     max-height: 720px;
     overflow-y: auto;
 }
+.solution-panel.is-hidden {
+    display: none !important;
+}
 
 .solution-panel h3 {
     font-family: 'Press Start 2P', monospace;
@@ -1741,3 +1744,256 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .mode-toggle.off .mode-toggle-value { color: var(--paper-dim); }
 .mode-toggle.on  { border-color: var(--cyan); box-shadow: 0 4px 0 #155F7A; }
 .mode-toggle.on:active { box-shadow: 0 0 0 #155F7A; }
+
+/* =====================================================
+   LEVEL EDITOR & GENERATOR
+   ===================================================== */
+
+.editor-body,
+.generator-body {
+    min-height: 100vh;
+}
+
+.editor-layout {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 240px 1fr 260px;
+    gap: 18px;
+    max-width: 1400px;
+    margin: 0 auto 32px;
+    padding: 0 20px 24px;
+    align-items: start;
+}
+@media (max-width: 1100px) {
+    .editor-layout { grid-template-columns: 1fr; }
+}
+
+.editor-tools h2,
+.editor-actions h2,
+.generator-intro h2 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--gold);
+    margin: 16px 0 10px;
+    letter-spacing: 0.06em;
+}
+.editor-tools h2:first-child,
+.editor-actions h2:first-child { margin-top: 0; }
+
+.tool-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.tool-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    padding: 10px 6px;
+    background: var(--night-deep);
+    border: 2px solid var(--stone-light);
+    color: var(--paper);
+    cursor: pointer;
+    transition: border-color 0.12s, color 0.12s;
+}
+.tool-btn:hover { border-color: var(--gold); color: var(--gold-bright); }
+.tool-btn.active {
+    border-color: var(--gold);
+    color: var(--gold);
+    box-shadow: 0 3px 0 var(--gold-dark);
+}
+
+.editor-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+.editor-field label {
+    font-size: 14px;
+    color: var(--paper-dim);
+}
+.editor-field input[type="number"] {
+    font-family: 'VT323', monospace;
+    font-size: 22px;
+    padding: 6px 10px;
+    background: var(--night-deep);
+    border: 2px solid var(--stone-light);
+    color: var(--paper);
+    width: 100%;
+}
+
+.editor-hint {
+    font-size: 16px;
+    color: var(--paper-dim);
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+.editor-hint.center { text-align: center; }
+.editor-hint strong { color: var(--gold); font-weight: normal; }
+
+.editor-canvas { padding: 16px; overflow: auto; }
+.editor-grid-wrap {
+    display: flex;
+    justify-content: center;
+    overflow: auto;
+    max-height: 70vh;
+}
+.editor-grid {
+    display: grid;
+    gap: 2px;
+    user-select: none;
+}
+.editor-grid .cell {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    border: 1px solid rgba(39, 68, 107, 0.8);
+    cursor: crosshair;
+    image-rendering: pixelated;
+}
+.editor-grid .t-# { background: var(--stone); }
+.editor-grid .t-floor { background: #0a1a3a; color: transparent; }
+.editor-grid .t-. { background: #1a3050; color: var(--gold); }
+.editor-grid .t-* { background: #2a1848; color: var(--cyan); }
+.editor-grid .has-knight { background: #3a2a10; color: var(--gold-bright); }
+.editor-grid .has-ghost-red { box-shadow: inset 0 0 0 2px var(--red); }
+.editor-grid .has-ghost-green { box-shadow: inset 0 0 0 2px var(--green); }
+.editor-grid .has-ghost-yellow { box-shadow: inset 0 0 0 2px var(--gold); }
+.editor-grid .has-ghost-blue { box-shadow: inset 0 0 0 2px var(--cyan); }
+
+.editor-status {
+    margin-top: 12px;
+    padding: 10px;
+    font-size: 17px;
+    border: 2px solid var(--stone-light);
+    background: rgba(0, 9, 36, 0.6);
+}
+.editor-status.ok { border-color: var(--green); color: var(--green); }
+.editor-status.err { border-color: var(--red); color: var(--red); }
+
+.validation-result {
+    margin-top: 14px;
+    font-size: 16px;
+    line-height: 1.5;
+}
+.validation-result.ok { color: var(--green); }
+.validation-result.err { color: var(--red); }
+.validation-result .warn { color: var(--gold); }
+.validation-result ul { margin-left: 18px; }
+
+.editor-actions .menu-btn,
+.editor-tools .menu-btn,
+.generator-actions .menu-btn {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.generator-main {
+    position: relative;
+    z-index: 2;
+    max-width: 720px;
+    margin: 0 auto 40px;
+    padding: 28px 28px 24px;
+}
+.generator-intro p {
+    font-size: 18px;
+    color: var(--paper);
+    line-height: 1.5;
+    margin-bottom: 20px;
+}
+.generator-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 360px;
+    margin-bottom: 20px;
+}
+.gen-preview {
+    margin-top: 16px;
+    padding: 14px;
+    background: var(--night-deep);
+    border: 2px solid var(--stone-light);
+    overflow: auto;
+    max-height: 320px;
+}
+.gen-map {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    line-height: 1.35;
+    color: var(--paper-dim);
+    white-space: pre;
+}
+
+/* Solver loading parade (knight follows ghosts L→R) */
+.solver-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 9, 36, 0.88);
+    padding: 24px;
+}
+.solver-overlay[hidden] { display: none !important; }
+
+.solver-parade {
+    width: min(640px, 100%);
+    text-align: center;
+    padding: 28px 24px 22px;
+}
+.parade-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--gold);
+    margin-bottom: 20px;
+    letter-spacing: 0.06em;
+}
+.parade-track {
+    position: relative;
+    height: 72px;
+    margin: 0 auto 16px;
+    max-width: 520px;
+    background: linear-gradient(180deg, rgba(39, 68, 107, 0.4), rgba(0, 20, 64, 0.9));
+    border: 3px solid var(--gold-dark);
+    overflow: hidden;
+}
+.parade-sprite {
+    position: absolute;
+    top: 50%;
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    transform: translateY(-50%);
+    animation: parade-run 3.2s linear infinite;
+}
+.parade-ghost.g1 { animation-delay: 0s; z-index: 2; }
+.parade-ghost.g2 { animation-delay: 0.15s; z-index: 2; left: -8%; }
+.parade-ghost.g3 { animation-delay: 0.3s; z-index: 2; left: -16%; }
+.parade-knight {
+    z-index: 3;
+    animation: parade-knight-follow 3.2s linear infinite;
+    filter: drop-shadow(0 2px 0 #000);
+}
+@keyframes parade-run {
+    0%   { left: -12%; }
+    100% { left: 108%; }
+}
+@keyframes parade-knight-follow {
+    0%   { left: -28%; }
+    100% { left: 82%; }
+}
+.parade-progress {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--cyan);
+    margin-bottom: 8px;
+}
+.parade-hint {
+    font-size: 16px;
+    color: var(--paper-dim);
+}

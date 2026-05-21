@@ -1714,6 +1714,17 @@ function buildLevelFromCurrent(game) {
 
 async function boot() {
     if (!window.LEVEL_DATA) { console.error('No LEVEL_DATA'); return; }
+
+    const playMode = window.LEVEL_DATA.mode || 'campaign';
+    if (playMode === 'custom' || playMode === 'generated') {
+        const stored = sessionStorage.getItem('ombrequatre_play_map');
+        if (!stored) {
+            window.location.href = playMode === 'custom' ? 'editor.php' : 'generator.php';
+            return;
+        }
+        window.LEVEL_DATA.map = stored;
+    }
+
     await loadAssets();
 
     // Use power-ups setting from server (session-stored, set in main menu).
@@ -1726,6 +1737,7 @@ async function boot() {
         usePowerUps,
         onEnd: async (payload) => {
             showOverlay(game, payload);
+            if (!window.LEVEL_DATA.id) return;
             try {
                 await fetch('api/save_score.php', {
                     method: 'POST',
@@ -1749,13 +1761,22 @@ async function boot() {
     const toggleSolutionsBtn = document.getElementById('toggleSolutionsBtn');
     let solutionsHidden = false;
     const applySolutionsVisibility = () => {
-        if (!gameMain || !solutionPanel || !toggleSolutionsBtn) return;
-        gameMain.classList.toggle('solutions-hidden', solutionsHidden);
-        solutionPanel.hidden = solutionsHidden;
-        toggleSolutionsBtn.textContent = solutionsHidden ? 'SHOW SOLUTIONS' : 'HIDE SOLUTIONS';
+        if (gameMain) {
+            gameMain.classList.toggle('solutions-hidden', solutionsHidden);
+        }
+        if (solutionPanel) {
+            solutionPanel.classList.toggle('is-hidden', solutionsHidden);
+            solutionPanel.hidden = solutionsHidden;
+            solutionPanel.style.display = solutionsHidden ? 'none' : '';
+        }
+        if (toggleSolutionsBtn) {
+            toggleSolutionsBtn.textContent = solutionsHidden ? 'SHOW SOLUTIONS' : 'HIDE SOLUTIONS';
+            toggleSolutionsBtn.setAttribute('aria-pressed', solutionsHidden ? 'true' : 'false');
+        }
     };
     if (toggleSolutionsBtn) {
-        toggleSolutionsBtn.addEventListener('click', () => {
+        toggleSolutionsBtn.addEventListener('click', (event) => {
+            event.preventDefault();
             solutionsHidden = !solutionsHidden;
             applySolutionsVisibility();
         });
@@ -1836,6 +1857,11 @@ function advanceSolutionMarker(game, playedDir) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', boot);
+window.OmbrequatreEngine = { Game, solveLocally };
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (!document.getElementById('canvas')) return;
+    boot();
+});
 
 })();
