@@ -23,10 +23,11 @@ if (!csrfCheck($body['csrf_token'] ?? null)) {
     exit;
 }
 
-$levelId = (int)($body['level_id'] ?? 0);
-$score   = max(0, (int)($body['score'] ?? 0));
-$gems    = max(0, (int)($body['gems'] ?? 0));
-$cleared = !empty($body['cleared']);
+$levelId  = (int)($body['level_id'] ?? 0);
+$score    = max(0, (int)($body['score'] ?? 0));
+$gems     = max(0, (int)($body['gems'] ?? 0));
+$cleared  = !empty($body['cleared']);
+$timeSec  = isset($body['time_sec']) && $body['time_sec'] > 0 ? (int)$body['time_sec'] : null;
 
 if ($levelId <= 0) {
     http_response_code(400);
@@ -52,21 +53,29 @@ $pdo->beginTransaction();
 try {
     // Upsert in_game with best-score-wins semantics
     $stmt = $pdo->prepare('
-        SELECT score_niveau FROM in_game WHERE id_niveau = ? AND id_joueur = ?
+        SELECT score_niveau, temps_best FROM in_game WHERE id_niveau = ? AND id_joueur = ?
     ');
     $stmt->execute([$levelId, $userId]);
     $row = $stmt->fetch();
 
     if ($row === false) {
         $pdo->prepare('
-            INSERT INTO in_game (id_niveau, id_joueur, score_niveau, nb_piece)
-            VALUES (?, ?, ?, ?)
-        ')->execute([$levelId, $userId, $score, $gems]);
+            INSERT INTO in_game (id_niveau, id_joueur, score_niveau, nb_piece, temps_best)
+            VALUES (?, ?, ?, ?, ?)
+        ')->execute([$levelId, $userId, $score, $gems, $timeSec]);
     } elseif ($score > (int)$row['score_niveau']) {
+        $newTime = ($timeSec !== null && ($row['temps_best'] === null || $timeSec < (int)$row['temps_best']))
+            ? $timeSec
+            : $row['temps_best'];
         $pdo->prepare('
-            UPDATE in_game SET score_niveau = ?, nb_piece = ?
+            UPDATE in_game SET score_niveau = ?, nb_piece = ?, temps_best = ?
             WHERE id_niveau = ? AND id_joueur = ?
-        ')->execute([$score, $gems, $levelId, $userId]);
+        ')->execute([$score, $gems, $newTime, $levelId, $userId]);
+    } elseif ($timeSec !== null && ($row['temps_best'] === null || $timeSec < (int)$row['temps_best'])) {
+        $pdo->prepare('
+            UPDATE in_game SET temps_best = ?
+            WHERE id_niveau = ? AND id_joueur = ?
+        ')->execute([$timeSec, $levelId, $userId]);
     }
 
     // Update user's total score (recompute from in_game for consistency)

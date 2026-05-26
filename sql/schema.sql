@@ -33,9 +33,12 @@ CREATE TABLE `niveau` (
   `difficulte` INT(11) NOT NULL DEFAULT 1,
   `score_max` INT(11) NOT NULL DEFAULT 0,
   `map` TEXT NOT NULL,
-  `solution_cache` TEXT NULL,         -- pre-computed optimal solution (string of U/D/L/R)
+  `solution_cache` TEXT NULL,          -- pre-computed optimal solution (string of U/D/L/R)
   `solution_safe` TINYINT(1) NOT NULL DEFAULT 0,  -- 1 if solution avoids all 4 ghosts; 0 = gems-only
-  PRIMARY KEY (`id`)
+  `auteur_id` INT(11) NULL DEFAULT NULL,           -- user who submitted this level (NULL = built-in)
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_auteur` (`auteur_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------
@@ -53,14 +56,16 @@ CREATE TABLE `utisateur` (
 
 -- ---------------------------------------------------------
 -- Table: in_game
--- Per-level player progress (best score, gem count)
+-- Per-level player progress (best score, gem count, best time)
 -- ---------------------------------------------------------
 CREATE TABLE `in_game` (
   `id_niveau` INT(11) NOT NULL,
   `id_joueur` INT(11) NOT NULL,
   `score_niveau` INT(11) NOT NULL DEFAULT 0,
   `nb_piece` INT(11) NOT NULL DEFAULT 0,
+  `temps_best` INT(11) NULL DEFAULT NULL,   -- best completion time in seconds (NULL if not yet won)
   PRIMARY KEY (`id_niveau`, `id_joueur`),
+  KEY `idx_joueur` (`id_joueur`),
   FOREIGN KEY (`id_niveau`) REFERENCES `niveau`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`id_joueur`) REFERENCES `utisateur`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

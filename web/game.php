@@ -8,7 +8,7 @@ $playMode = $_GET['mode'] ?? 'campaign';
 $powerUpsEnabled = powerUpsEnabled();
 
 if ($playMode === 'custom' || $playMode === 'generated') {
-    $levelLabel = $playMode === 'custom' ? 'PERSO' : 'ALÉA';
+    $levelLabel = $playMode === 'custom' ? 'CUSTOM' : 'RAND';
     $levelDataJson = json_encode([
         'id'         => 0,
         'mode'       => $playMode,
@@ -18,7 +18,7 @@ if ($playMode === 'custom' || $playMode === 'generated') {
         'powerUps'   => $powerUpsEnabled,
         'label'      => $levelLabel,
     ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-    $pageTitle = $playMode === 'custom' ? 'Niveau personnalisé' : 'Labyrinthe aléatoire';
+    $pageTitle = $playMode === 'custom' ? 'Custom Level' : 'Random Maze';
 } else {
     $levelId = (int)($_GET['level'] ?? 1);
     if ($levelId < 1) $levelId = 1;
@@ -54,7 +54,7 @@ if ($playMode === 'custom' || $playMode === 'generated') {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -67,26 +67,26 @@ if ($playMode === 'custom' || $playMode === 'generated') {
 <header class="game-hud">
     <div class="hud-left">
         <div class="hud-stat"><span class="hud-label">SCORE</span><span class="hud-value" id="score">000000</span></div>
-        <div class="hud-stat"><span class="hud-label">NIVEAU</span><span class="hud-value" id="levelLabel"><?= e($levelLabel) ?></span></div>
-        <div class="hud-stat"><span class="hud-label">GEMMES</span><span class="hud-value" id="gems">00/00</span></div>
-        <div class="hud-stat"><span class="hud-label">TOURS</span><span class="hud-value" id="moves">000</span></div>
-        <div class="hud-stat"><span class="hud-label">TEMPS</span><span class="hud-value" id="time">00:00</span></div>
-        <div class="hud-stat"><span class="hud-label">VIES</span><span class="hud-value" id="lives"></span></div>
+        <div class="hud-stat"><span class="hud-label">LEVEL</span><span class="hud-value" id="levelLabel"><?= e($levelLabel) ?></span></div>
+        <div class="hud-stat"><span class="hud-label">GEMS</span><span class="hud-value" id="gems">00/00</span></div>
+        <div class="hud-stat"><span class="hud-label">TURNS</span><span class="hud-value" id="moves">000</span></div>
+        <div class="hud-stat"><span class="hud-label">TIME</span><span class="hud-value" id="time">00:00</span></div>
+        <div class="hud-stat"><span class="hud-label">LIVES</span><span class="hud-value" id="lives"></span></div>
         <div class="hud-stat hud-flag <?= $powerUpsEnabled ? 'on' : 'off' ?>">
-            <span class="hud-label">POUVOIRS</span>
+            <span class="hud-label">POWERS</span>
             <span class="hud-value"><?= $powerUpsEnabled ? 'ON' : 'OFF' ?></span>
         </div>
     </div>
     <div class="hud-right">
-        <button id="solverBtn" class="nav-btn nav-btn-dark">INDICE ICI</button>
-        <button id="toggleSolutionsBtn" class="nav-btn nav-btn-dark">MASQUER SOLUTIONS</button>
+        <button id="solverBtn" class="nav-btn nav-btn-dark">HINT</button>
+        <button id="toggleSolutionsBtn" class="nav-btn nav-btn-dark">HIDE SOLUTION</button>
         <a href="menu.php" class="nav-btn nav-btn-dark">MENU</a>
     </div>
 </header>
 
 <div class="mode-banner" id="modeBanner">
-    <span class="mode-label">STATUT</span>
-    <span class="mode-value" id="modeText">FURTIF</span>
+    <span class="mode-label">STATUS</span>
+    <span class="mode-value" id="modeText">STEALTH</span>
 </div>
 
 <main class="game-main">
@@ -96,10 +96,10 @@ if ($playMode === 'custom' || $playMode === 'generated') {
     </section>
 
     <aside id="solutionPanel" class="solution-panel">
-        <h3>CHEMIN OPTIMAL</h3>
-        <p class="sol-sub">Calculé depuis le départ.<br>
+        <h3>OPTIMAL PATH</h3>
+        <p class="sol-sub">Computed from the start.<br>
            <span id="solGhostNote" class="sol-note"></span></p>
-        <div class="sol-status" id="solStatus">Calcul…</div>
+        <div class="sol-status" id="solStatus">Loading…</div>
         <div class="sol-sequence" id="solSequence"></div>
         <div class="sol-stats">
             <div><span>OPTIMAL</span><strong id="solOpt">—</strong></div>
@@ -118,7 +118,7 @@ if ($playMode === 'custom' || $playMode === 'generated') {
         </div>
         <button class="dir-btn" data-dir="D" aria-label="Bas">▼</button>
     </div>
-    <p class="ctrl-hint"><strong>1 DÉCISION = 1 TOUR.</strong> Flèches ou boutons. Le chevalier glisse jusqu’à un mur ou un croisement.</p>
+    <p class="ctrl-hint"><strong>1 DECISION = 1 TURN.</strong> Arrow keys or buttons. The knight slides until a wall or junction.</p>
 </div>
 
 <script>

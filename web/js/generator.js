@@ -163,11 +163,9 @@ function setStatus(msg, err) {
 }
 
 function solveSilent(levelText, requireSafe) {
-    return window.OmbrequatreEngine.solveLocally(levelText, {
+    return window.OmbrequatreEngine.solveViaC(levelText, {
         requireSafe,
         allowFallback: false,
-        maxTimeMs: 8000,
-        maxNodes: 3_000_000,
     });
 }
 
@@ -180,7 +178,7 @@ async function generate() {
 
     const hideParade = window.SolverBridge.showParade(
         document.getElementById('solverOverlay'),
-        'Le chevalier teste les labyrinthes…'
+        'The knight tests the labyrinths…'
     );
 
     await new Promise(r => setTimeout(r, 40));
@@ -191,11 +189,11 @@ async function generate() {
 
         const progressEl = document.querySelector('#paradeProgress');
         if (progressEl) {
-            progressEl.textContent = `Tentative ${attempt} / ${TARGET.maxAttempts}`;
+            progressEl.textContent = `Attempt ${attempt} / ${TARGET.maxAttempts}`;
         }
 
         try {
-            const result = solveSilent(candidate.text, candidate.ghosts > 0);
+            const result = await solveSilent(candidate.text, candidate.ghosts > 0);
             if (!result.found) continue;
             const moves = result.moves.length;
             if (moves < TARGET.minMoves || moves > TARGET.maxMoves) continue;
@@ -204,8 +202,8 @@ async function generate() {
             lastMap = candidate.text;
             renderPreview(candidate.text);
             setStatus(
-                `Niveau prêt : ${candidate.gemCount} étoiles, ${candidate.ghosts} fantôme(s), ` +
-                `${moves} coups optimaux (tentative ${attempt}).`
+                `Level ready: ${candidate.gemCount} gems, ${candidate.ghosts} ghost(s), ` +
+                `${moves} optimal moves (attempt ${attempt}).`
             );
             playBtn.disabled = false;
             btn.disabled = false;
@@ -214,7 +212,7 @@ async function generate() {
     }
 
     hideParade();
-    setStatus('Impossible cette fois — cliquez à nouveau sur Générer.', true);
+    setStatus('Could not generate a valid level — click Generate again.', true);
     btn.disabled = false;
 }
 
@@ -227,7 +225,7 @@ function play() {
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('generateBtn').addEventListener('click', generate);
     document.getElementById('playBtn').addEventListener('click', play);
-    setStatus('Cliquez sur « Générer » pour créer un labyrinthe moyen.');
+    setStatus('Click "Generate" to create a medium-difficulty maze.');
 });
 
 })();

@@ -1017,326 +1017,6 @@ class Game {
         if (this._raf)         cancelAnimationFrame(this._raf);
     }
 
-    // =====================================================
-    // Solver — BFS safe-path (avoids R, G, B trajectories)
-    // Yellow's behavior depends on player choices, so it is
-    // ignored by the solver (and we display this in the UI).
-    // =====================================================
-
-    /**
-     * Pre-compute ghost positions for the next maxTurns turns.
-     * Returns: { red: [{r,c,visible}], green: [...], blue: [...] }
-     * Index 0 = starting position (turn 0, before any player move).
-     * Index t = position AFTER t ghost moves.
-     */
-    _precomputeGhosts(maxTurns) {
-        const trajectories = {};
-        const types = ['red', 'green', 'blue'];
-
-        for (const type of types) {
-            const ghost = this.ghosts.find(x => x.type === type);
-            if (!ghost) continue;
-
-            let r = ghost.startRow, c = ghost.startCol;
-            let lastDir = null, visible = true, teleCount = 0;
-            const traj = [{ r, c, visible: true }];
-
-            for (let t = 1; t <= maxTurns; t++) {
-                if (type === 'blue') {
-                    teleCount++;
-                    if (teleCount % 2 === 0) {
-                        // Re-appear at next portal
-                        const idx = this.portals.findIndex(p => p[0] === r && p[1] === c);
-                        const next = ((idx >= 0 ? idx : -1) + 1) % this.portals.length;
-                        r = this.portals[next][0];
-                        c = this.portals[next][1];
-                        visible = true;
-                    } else {
-                        visible = false;
-                    }
-                } else {
-                    // Red / Green: priority list
-                    const reverse = lastDir ? OPP[lastDir] : null;
-                    const prio = type === 'red'
-                        ? ['R', 'D', 'L', 'U']
-                        : ['U', 'L', 'D', 'R'];
-                    let dir = null;
-                    for (const d of prio) {
-                        if (d === reverse) continue;
-                        const { dr, dc } = DELTA[d];
-                        if (this.isWalkable(r + dr, c + dc)) { dir = d; break; }
-                    }
-                    if (!dir && reverse) {
-                        const { dr, dc } = DELTA[reverse];
-                        if (this.isWalkable(r + dr, c + dc)) dir = reverse;
-                    }
-                    if (dir) {
-                        const slide = this._computeSlidePathFrom(r, c, dir);
-                        if (slide.length >= 2) {
-                            const end = slide[slide.length - 1];
-                            r = end[0]; c = end[1];
-                            lastDir = dir;
-                        }
-                    }
-                }
-                traj.push({ r, c, visible });
-            }
-            trajectories[type] = traj;
-        }
-        return trajectories;
-    }
-
-    /**
-     * Compute the safe-path solution.
-     *
-     * @param opts.fromCurrent  If true, start from the knight's current
-     *                          position, current last_dir, current grid,
-     *                          and turn=this.moves.  Otherwise, start
-     *                          from the level's initial state.
-     * @param opts.maxTurns     Max turns the BFS will explore (default 80).
-     * @param opts.maxNodes     Max nodes (default 1M).
-     * @param opts.requireSafe  If true, refuse to traverse cells occupied
-     *                          by ghosts. If false, ignore ghosts entirely
-     *                          (gem-only BFS — old behavior, kept as fallback).
-     * @returns { found, moves, ghostsConsidered, reason } where moves is an
-     *          array of 'U'/'D'/'L'/'R'.
-     */
-    solvePath(opts = {}) {
-        const fromCurrent = opts.fromCurrent === true;
-        const maxTurns    = opts.maxTurns || 100;
-        const maxNodes    = opts.maxNodes || 2_500_000;
-        const maxTimeMs   = opts.maxTimeMs || 3000;   // 3s budget by default
-        const requireSafe = opts.requireSafe !== false;
-        const startedAt   = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-
-        // Build initial state
-        let startR, startC, startD, startMask, startTurn;
-        let coinPositions = [];   // [r, c] for each coin index
-        let coinIndex = {};       // { "r,c" : index }
-        let workingGrid;          // grid snapshot
-
-        if (fromCurrent) {
-            // From current state
-            workingGrid = this.grid.map(row => row.slice());
-            startR = this.player.row;
-            startC = this.player.col;
-            startD = this.player.lastDir || '_';
-            startTurn = this.moves;
-        } else {
-            // From scratch — reconstitute full level
-            const { meta, grid } = parseLevel(this.opts.levelText || '');
-            workingGrid = grid;
-            startR = meta.start.row;
-            startC = meta.start.col;
-            startD = '_';
-            startTurn = 0;
-        }
-
-        // Build coin index from the working grid
-        for (let r = 0; r < this.meta.height; r++) {
-            for (let c = 0; c < this.meta.width; c++) {
-                if ([T.GEM, T.POTION, T.WATCH].includes(workingGrid[r][c])) {
-                    coinIndex[r + ',' + c] = coinPositions.length;
-                    coinPositions.push([r, c]);
-                }
-            }
-        }
-        const nCoins = coinPositions.length;
-        if (nCoins === 0) {
-            return { found: true, moves: [], ghostsConsidered: requireSafe, reason: 'no_coins' };
-        }
-        if (nCoins > 30) {
-            return { found: false, moves: [], ghostsConsidered: requireSafe, reason: 'too_many_coins' };
-        }
-        startMask = (1 << nCoins) - 1;
-
-        // Pre-compute ghost trajectories if requireSafe (red, green, blue only —
-        // their movement does NOT depend on the player)
-        let ghostTraj = null;
-        if (requireSafe) {
-            ghostTraj = this._precomputeGhosts(maxTurns + 1);
-        }
-
-        // Yellow ghost (Âme corrompue) is part of the BFS state because its
-        // movement depends on the player's last direction.
-        const yellowGhost = requireSafe ? this.ghosts.find(g => g.type === 'yellow') : null;
-        let startYR = -1, startYC = -1, startYLastDir = '_';
-        if (yellowGhost) {
-            if (fromCurrent) {
-                startYR = yellowGhost.row;
-                startYC = yellowGhost.col;
-                startYLastDir = yellowGhost.lastDir || '_';
-            } else {
-                startYR = yellowGhost.startRow;
-                startYC = yellowGhost.startCol;
-                startYLastDir = '_';
-            }
-        }
-
-        /** Step the yellow ghost ONCE given the player's last direction.
-         *  Returns { r, c, lastDir }. The yellow tries to go OPPOSITE
-         *  the player's last direction; stops (no move) if blocked or
-         *  if the opposite would be a reverse of its own last direction. */
-        const stepYellow = (yr, yc, yLastDir, playerLastDir) => {
-            if (playerLastDir === '_' || !playerLastDir) {
-                const reverse = yLastDir !== '_' ? OPP[yLastDir] : null;
-                for (const d of ALL_DIRS) {
-                    if (d === reverse) continue;
-                    const slide = this._computeSlidePathFrom(yr, yc, d);
-                    if (slide.length >= 2) {
-                        const end = slide[slide.length - 1];
-                        return { r: end[0], c: end[1], lastDir: d };
-                    }
-                }
-                return { r: yr, c: yc, lastDir: yLastDir };
-            }
-            const target = OPP[playerLastDir];
-            const reverse = yLastDir !== '_' ? OPP[yLastDir] : null;
-            if (target === reverse) {
-                return { r: yr, c: yc, lastDir: yLastDir };
-            }
-            const slide = this._computeSlidePathFrom(yr, yc, target);
-            if (slide.length < 2) {
-                return { r: yr, c: yc, lastDir: yLastDir };
-            }
-            const end = slide[slide.length - 1];
-            return { r: end[0], c: end[1], lastDir: target };
-        };
-
-        // Slide simulation (returns { r, c, mask, path } or null if first step is wall)
-        const simulateSlide = (r, c, dir, mask) => {
-            const { dr, dc } = DELTA[dir];
-            if (!this.isWalkable(r + dr, c + dc)) return null;
-            const path = [[r, c]];
-            let nr = r, nc = c, nmask = mask;
-            while (true) {
-                nr += dr; nc += dc;
-                path.push([nr, nc]);
-                const ci = coinIndex[nr + ',' + nc];
-                if (ci !== undefined) nmask &= ~(1 << ci);
-                if (!this.isWalkable(nr + dr, nc + dc)) break;
-                if (this.isJunction(nr, nc, dir)) break;
-            }
-            return { r: nr, c: nc, mask: nmask, path };
-        };
-
-        // Check if path is safe at given turn against red/green/blue (pre-computed)
-        // and yellow (passed in explicitly because it depends on the player's last dir)
-        const pathSafe = (path, turn, yellowR, yellowC) => {
-            if (!requireSafe || !ghostTraj) return true;
-            if (turn >= maxTurns) return false;
-            // Red, green, blue
-            for (const type of ['red', 'green', 'blue']) {
-                const traj = ghostTraj[type];
-                if (!traj) continue;
-                const pos = traj[turn];
-                if (!pos || !pos.visible) continue;
-                for (const [pr, pc] of path) {
-                    if (pr === pos.r && pc === pos.c) return false;
-                }
-            }
-            // Yellow (always visible if present)
-            if (yellowGhost && yellowR >= 0) {
-                for (const [pr, pc] of path) {
-                    if (pr === yellowR && pc === yellowC) return false;
-                }
-            }
-            return true;
-        };
-
-        // BFS
-        // Key includes yellow position+dir when requireSafe, because the same
-        // (r, c, mask, dir, turn) reached via different player histories may
-        // have the yellow in different places.
-        const visited = new Map();
-        const stateKey = (r, c, d, mask, turn, yr, yc, yd) => {
-            if (!requireSafe) return `${mask}:${r},${c}:${d}`;
-            if (!yellowGhost) return `${mask}:${r},${c}:${d}:${turn}`;
-            return `${mask}:${r},${c}:${d}:${turn}:${yr},${yc}:${yd}`;
-        };
-
-        const init = {
-            r: startR, c: startC, d: startD, mask: startMask, turn: startTurn,
-            yr: startYR, yc: startYC, yd: startYLastDir,
-            parent: -1, move: null,
-        };
-        const nodes = [init];
-        const queue = [0];
-        let head = 0;
-        visited.set(stateKey(startR, startC, startD, startMask, startTurn,
-                              startYR, startYC, startYLastDir), 0);
-
-        let foundIdx = -1;
-        let timedOut = false;
-        let nodeCounter = 0;
-        while (head < queue.length && nodes.length < maxNodes) {
-            // Check time budget every 8192 nodes
-            if ((nodeCounter++ & 0x1FFF) === 0) {
-                const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-                if (now - startedAt > maxTimeMs) { timedOut = true; break; }
-            }
-            const idx = queue[head++];
-            const node = nodes[idx];
-            if (node.mask === 0) { foundIdx = idx; break; }
-
-            const reverse = node.d !== '_' ? OPP[node.d] : null;
-            for (const d of ALL_DIRS) {
-                if (d === reverse) continue;
-                const result = simulateSlide(node.r, node.c, d, node.mask);
-                if (!result) continue;
-                const nextTurn = node.turn + 1;
-
-                // Step yellow ghost given the player's chosen direction `d`
-                let nyr = node.yr, nyc = node.yc, nyd = node.yd;
-                if (yellowGhost && node.yr >= 0) {
-                    const ystep = stepYellow(node.yr, node.yc, node.yd, d);
-                    nyr = ystep.r; nyc = ystep.c; nyd = ystep.lastDir;
-                }
-
-                if (!pathSafe(result.path, nextTurn, nyr, nyc)) continue;
-
-                const k = stateKey(result.r, result.c, d, result.mask, nextTurn, nyr, nyc, nyd);
-                if (visited.has(k)) continue;
-                visited.set(k, nodes.length);
-                queue.push(nodes.length);
-                nodes.push({
-                    r: result.r, c: result.c, d, mask: result.mask, turn: nextTurn,
-                    yr: nyr, yc: nyc, yd: nyd,
-                    parent: idx, move: d,
-                });
-            }
-        }
-
-        if (foundIdx === -1) {
-            let reason;
-            if (timedOut)                      reason = 'time_limit';
-            else if (nodes.length >= maxNodes) reason = 'node_limit';
-            else                               reason = 'no_path';
-            return {
-                found: false, moves: [],
-                ghostsConsidered: requireSafe,
-                reason,
-            };
-        }
-        // Reconstruct
-        const moves = [];
-        let cur = foundIdx;
-        while (nodes[cur].parent !== -1) {
-            moves.push(nodes[cur].move);
-            cur = nodes[cur].parent;
-        }
-        moves.reverse();
-        return { found: true, moves, ghostsConsidered: requireSafe, reason: null };
-    }
-
-    // Convenience hint API — kept for backwards compat
-    getHint() {
-        const r = this.solvePath({ fromCurrent: true, requireSafe: true });
-        if (r.found && r.moves.length > 0) return r.moves[0];
-        // Fall back to gem-only BFS if no safe path exists
-        const r2 = this.solvePath({ fromCurrent: true, requireSafe: false });
-        return r2.found && r2.moves.length > 0 ? r2.moves[0] : null;
-    }
 }
 
 // =====================================================
@@ -1352,11 +1032,13 @@ function renderSolutionPanel(panel, result, opts = {}) {
 
     if (!result.found) {
         const reasons = {
-            no_path:        'No safe path could be found.<br>The Wardens block every route.',
-            node_limit:     'Search space too large — solver gave up.',
-            time_limit:     'Search timed out — try without ghosts.',
-            too_many_coins: 'Too many gems for the optimal solver.',
-            no_coins:       'No gems left.',
+            no_path:            'No safe path could be found.<br>The Wardens block every route.',
+            node_limit:         'Search space too large — solver gave up.',
+            time_limit:         'Search timed out — try without ghosts.',
+            too_many_coins:     'Too many gems for the optimal solver.',
+            no_coins:           'No gems left.',
+            solver_error:       'The C solver could not complete this level.',
+            solver_unavailable: 'C solver unavailable — build it: cd solver && make',
         };
         panel.innerHTML = `
             <h3>OPTIMAL PATH</h3>
@@ -1500,191 +1182,108 @@ function showPreGameModal() {
 // =====================================================
 
 // =====================================================
-// Solver: Web Worker + server cache integration
+// Solver : appel du solveur C via l'endpoint PHP api/solve.php
 // =====================================================
 
 /**
- * Singleton-ish worker pool. We keep one worker alive for the page.
- * Each request gets a unique id so callbacks don't get crossed.
+ * Resout un niveau en appelant le solveur C (binaire compile) via
+ * l'endpoint PHP api/solve.php. Le navigateur ne peut pas executer de
+ * C : tout le calcul se fait cote serveur.
+ *
+ * @param {string} levelText  Niveau au format .txt du projet.
+ * @param {object} opts       { requireSafe, allowFallback }
+ * @returns {Promise<object>} { found, moves, ghostsConsidered, fallback, reason }
  */
-let _worker = null;
-let _workerJobId = 0;
-const _workerCallbacks = new Map();   // id -> { onProgress, onDone, onError }
-
-function getWorker() {
-    if (_worker) return _worker;
-    try {
-        _worker = new Worker('js/solver-worker.js');
-    } catch (err) {
-        console.error('Cannot spawn worker', err);
-        return null;
-    }
-    _worker.onmessage = (e) => {
-        const m = e.data || {};
-        const cb = _workerCallbacks.get(m.id);
-        if (!cb) return;
-        if (m.type === 'progress' && cb.onProgress) cb.onProgress(m);
-        else if (m.type === 'done') {
-            cb.onDone && cb.onDone(m.result);
-            _workerCallbacks.delete(m.id);
-        } else if (m.type === 'error') {
-            cb.onError && cb.onError(m.message);
-            _workerCallbacks.delete(m.id);
-        }
+async function solveViaC(levelText, opts = {}) {
+    const body = {
+        level:         levelText,
+        requireSafe:   opts.requireSafe !== false,
+        allowFallback: opts.allowFallback === true,
     };
-    _worker.onerror = (err) => {
-        console.error('Worker error', err);
-    };
-    return _worker;
+    const resp = await fetch('api/solve.php', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+    });
+    // L'endpoint renvoie du JSON meme en cas d'erreur (code 4xx/5xx).
+    let payload = null;
+    try { payload = await resp.json(); } catch (_) {}
+    if (payload && typeof payload.found !== 'undefined') return payload;
+    return { found: false, moves: [], reason: 'solver_error' };
 }
 
-function solveInWorker(levelText, opts, callbacks) {
-    const w = getWorker();
-    if (!w) {
-        // Worker unavailable: run solver on main thread asynchronously.
-        setTimeout(() => {
-            try {
-                callbacks.onProgress && callbacks.onProgress({ nodes: 0, elapsedMs: 0 });
-                const localResult = solveLocally(levelText, opts || {});
-                callbacks.onDone && callbacks.onDone(localResult);
-            } catch (err) {
-                callbacks.onError && callbacks.onError(err && err.message ? err.message : 'Local solver failed');
-            }
-        }, 0);
-        return null;
-    }
-    const id = ++_workerJobId;
-    _workerCallbacks.set(id, callbacks);
-    w.postMessage({ id, type: 'solve', level: levelText, opts });
-    return id;
-}
-
-/** Local fallback solver used when the worker script is not present. */
-function solveLocally(levelText, opts = {}) {
-    const canvas = document.createElement('canvas');
-    const tempGame = new Game(canvas, levelText, { usePowerUps: false });
-    try {
-        const safe = tempGame.solvePath({
-            fromCurrent: false,
-            requireSafe: opts.requireSafe !== false,
-            maxTimeMs: opts.maxTimeMs || 30_000,
-            maxNodes: opts.maxNodes || 8_000_000,
-        });
-        if (safe.found) {
-            return { ...safe, fromCache: false };
-        }
-        if (opts.allowFallback) {
-            const fallback = tempGame.solvePath({
-                fromCurrent: false,
-                requireSafe: false,
-                maxTimeMs: Math.max(5_000, Math.floor((opts.maxTimeMs || 30_000) / 2)),
-                maxNodes: Math.max(1_000_000, Math.floor((opts.maxNodes || 8_000_000) / 2)),
-            });
-            return { ...fallback, fallback: true, fromCache: false };
-        }
-        return { ...safe, fromCache: false };
-    } finally {
-        tempGame.destroy();
-    }
-}
-
-/** Load the initial optimal path using live worker solve only. */
+/** Charge la solution optimale initiale via le solveur C. */
 function loadOptimalSolution(game, panel) {
-    console.log('[Solver] Live worker solve');
-    computeWithWorker(game, panel);
+    console.log('[Solver] Resolution via le solveur C (api/solve.php)');
+    computeSolution(game, panel);
 }
 
-function computeWithWorker(game, panel) {
+/** Calcule et affiche la solution optimale du niveau (depuis le depart). */
+function computeSolution(game, panel) {
     panel.innerHTML = `
         <h3>OPTIMAL PATH</h3>
-        <p class="sol-empty">Computing in background…</p>
-        <p class="sol-progress" id="solProgress">0 nodes / 0.0s</p>
+        <p class="sol-empty">Computing via C solver\u2026</p>
     `;
 
-    const progressEl = document.getElementById('solProgress');
-
-    solveInWorker(window.LEVEL_DATA.map, {
-        requireSafe: true,
+    solveViaC(window.LEVEL_DATA.map, {
+        requireSafe:   true,
         allowFallback: true,
-        maxTimeMs: 30_000,
-        maxNodes: 8_000_000,
-    }, {
-        onProgress: (m) => {
-            if (progressEl) {
-                progressEl.textContent = `${m.nodes.toLocaleString()} nodes / ${(m.elapsedMs/1000).toFixed(1)}s`;
-            }
-        },
-        onDone: (result) => {
-            game._initialSolution = result;
-            game._solutionFromCurrent = false;
-            renderSolutionPanel(panel, result, { fromCurrent: false, currentMove: 0 });
-        },
-        onError: (msg) => {
-            panel.innerHTML = `
-                <h3>OPTIMAL PATH</h3>
-                <p class="sol-empty">Solver error: ${msg}</p>
-            `;
-        },
+    }).then(result => {
+        game._initialSolution     = result;
+        game._solutionFromCurrent = false;
+        renderSolutionPanel(panel, result, { fromCurrent: false, currentMove: 0 });
+    }).catch(err => {
+        panel.innerHTML = `
+            <h3>OPTIMAL PATH</h3>
+            <p class="sol-empty">Solver error: ${err && err.message ? err.message : err}</p>
+        `;
     });
 }
 
-/** Request a hint from the player's current position. Uses the worker
- *  so the UI doesn't block. Highlights the next move on the direction pad. */
+/** Demande un indice depuis la position actuelle du joueur. Serialise
+ *  l'etat courant en niveau-texte et le soumet au solveur C, puis met
+ *  en surbrillance le prochain coup sur le pave directionnel. */
 function requestHintFromHere(game, panel, solverBtn) {
-    // Save original label, show loading state on button
     const originalLabel = solverBtn.textContent;
     solverBtn.disabled = true;
-    solverBtn.textContent = 'COMPUTING…';
+    solverBtn.textContent = 'COMPUTING\u2026';
 
     panel.innerHTML = `
         <h3>HINT FROM HERE</h3>
-        <p class="sol-empty">Computing safe path from your position…</p>
-        <p class="sol-progress" id="solProgress">0 nodes / 0.0s</p>
+        <p class="sol-empty">Computing path from your current position\u2026</p>
     `;
-    const progressEl = document.getElementById('solProgress');
 
-    // Serialize current game state into a "level-from-here" text so the worker
-    // can reason from current position. We use the original map (with the
-    // already-collected gems removed) and override the start position.
+    // Serialise l'etat courant : gemmes deja ramassees retirees de la
+    // carte, P repositionne, positions des fantomes mises a jour.
     const customLevel = buildLevelFromCurrent(game);
 
-    solveInWorker(customLevel, {
-        requireSafe: true,
+    solveViaC(customLevel, {
+        requireSafe:   true,
         allowFallback: true,
-        maxTimeMs: 10_000,
-        maxNodes: 4_000_000,
-    }, {
-        onProgress: (m) => {
-            if (progressEl) {
-                progressEl.textContent = `${m.nodes.toLocaleString()} nodes / ${(m.elapsedMs/1000).toFixed(1)}s`;
-            }
-        },
-        onDone: (result) => {
-            solverBtn.disabled = false;
-            solverBtn.textContent = originalLabel;
+    }).then(result => {
+        solverBtn.disabled = false;
+        solverBtn.textContent = originalLabel;
 
-            game._solutionFromCurrent = true;
-            renderSolutionPanel(panel, result, { fromCurrent: true, currentMove: 0 });
+        game._solutionFromCurrent = true;
+        renderSolutionPanel(panel, result, { fromCurrent: true, currentMove: 0 });
 
-            if (result.found && result.moves.length > 0) {
-                const nextMove = result.moves[0];
-                document.querySelectorAll('.dir-btn[data-dir]').forEach(b => {
-                    b.classList.toggle('suggested', b.dataset.dir === nextMove);
-                });
-                setTimeout(() => {
-                    document.querySelectorAll('.dir-btn[data-dir]').forEach(b =>
-                        b.classList.remove('suggested'));
-                }, 3500);
-            }
-        },
-        onError: (msg) => {
-            solverBtn.disabled = false;
-            solverBtn.textContent = originalLabel;
-            panel.innerHTML = `
-                <h3>HINT FROM HERE</h3>
-                <p class="sol-empty">Solver error: ${msg}</p>
-            `;
-        },
+        if (result.found && result.moves.length > 0) {
+            const nextMove = result.moves[0];
+            document.querySelectorAll('.dir-btn[data-dir]').forEach(b => {
+                b.classList.toggle('suggested', b.dataset.dir === nextMove);
+            });
+            setTimeout(() => {
+                document.querySelectorAll('.dir-btn[data-dir]').forEach(b =>
+                    b.classList.remove('suggested'));
+            }, 3500);
+        }
+    }).catch(err => {
+        solverBtn.disabled = false;
+        solverBtn.textContent = originalLabel;
+        panel.innerHTML = `
+            <h3>HINT FROM HERE</h3>
+            <p class="sol-empty">Solver error: ${err && err.message ? err.message : err}</p>
+        `;
     });
 }
 
@@ -1748,6 +1347,7 @@ async function boot() {
                         score:      payload.score,
                         gems:       payload.gems,
                         cleared:    payload.cleared,
+                        time_sec:   payload.timeSec,
                     }),
                 });
             } catch (_) {}
@@ -1857,7 +1457,7 @@ function advanceSolutionMarker(game, playedDir) {
     }
 }
 
-window.OmbrequatreEngine = { Game, solveLocally };
+window.OmbrequatreEngine = { Game, solveViaC };
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!document.getElementById('canvas')) return;

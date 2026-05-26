@@ -14,17 +14,20 @@ let grid = [];
 let meta = { width, height, start: { row: 1, col: 1 }, ghosts: {} };
 let tool = 'wall';
 let lastValidatedMap = null;
+let lastValidatedResult = null;
 let isPainting = false;
 
 const els = {
     grid: document.getElementById('editorGrid'),
     status: document.getElementById('editorStatus'),
     validation: document.getElementById('validationResult'),
+    submitResult: document.getElementById('submitResult'),
     gemCount: document.getElementById('gemCountDisplay'),
     gemTarget: document.getElementById('gemTargetDisplay'),
     ghostCount: document.getElementById('ghostCountDisplay'),
     validateBtn: document.getElementById('validateBtn'),
     playBtn: document.getElementById('playSkipBtn'),
+    submitBtn: document.getElementById('submitLevelBtn'),
 };
 
 function emptyGrid(w, h) {
@@ -143,7 +146,7 @@ function scatterGems() {
         const [r, c] = floors[i];
         grid[r][c] = '.';
     }
-    setStatus(`${n} étoile(s) placée(s) sur les couloirs.`);
+    setStatus(`${n} gem(s) placed on floor tiles.`);
     updateCounters();
     renderGrid();
 }
@@ -233,12 +236,12 @@ function loadFromText(text) {
     els.playBtn.disabled = true;
     updateCounters();
     renderGrid();
-    setStatus('Niveau importé.');
+    setStatus('Level imported.');
 }
 
 async function validateAndMaybePlay(playAfter) {
     if (!meta.start) {
-        setValidation('<p>Placez le chevalier.</p>', false);
+        setValidation('<p>Place the knight on the grid first.</p>', false);
         return;
     }
     const check = validateLevelStructure(meta, grid);
@@ -260,28 +263,32 @@ async function validateAndMaybePlay(playAfter) {
 
         if (!result.found) {
             const reasons = {
-                no_path: 'Aucun chemin pour tout ramasser.',
-                node_limit: 'Labyrinthe trop complexe (limite solveur).',
-                time_limit: 'Temps dépassé (15 s) — simplifiez la carte.',
-                too_many_coins: 'Trop de gemmes (max 30).',
+                no_path: 'No path to collect all gems.',
+                node_limit: 'Maze too complex (solver node limit reached).',
+                time_limit: 'Timeout (15 s) — simplify the map.',
+                too_many_coins: 'Too many gems (max 30).',
             };
-            setValidation(`<p class="err">${reasons[result.reason] || 'Niveau impossible.'}</p>`, false);
-            lastValidatedMap = null;
-            els.playBtn.disabled = true;
+            setValidation(`<p class="err">${reasons[result.reason] || 'Level has no solution.'}</p>`, false);
+            lastValidatedMap    = null;
+            lastValidatedResult = null;
+            els.playBtn.disabled   = true;
+            if (els.submitBtn) els.submitBtn.disabled = true;
             return;
         }
 
         const safeNote = result.fallback
-            ? '<p class="warn">⚠ Solution gemmes seulement (pas 100 % sûre vs fantômes).</p>'
-            : '<p class="ok">✓ Niveau faisable' + (hasGhosts ? ' en évitant les fantômes' : '') + ` — ${result.moves.length} coups optimaux.</p>`;
+            ? '<p class="warn">⚠ Gems-only solution (no 100%-safe path vs ghosts).</p>'
+            : '<p class="ok">✓ Level is solvable' + (hasGhosts ? ' while avoiding all ghosts' : '') + ` — ${result.moves.length} optimal moves.</p>`;
 
         setValidation(safeNote, true);
-        lastValidatedMap = levelText;
-        els.playBtn.disabled = false;
+        lastValidatedMap    = levelText;
+        lastValidatedResult = result;
+        els.playBtn.disabled   = false;
+        if (els.submitBtn) els.submitBtn.disabled = false;
 
         if (playAfter) launchPlay();
     } catch (err) {
-        setValidation(`<p class="err">${err.message || 'Erreur solveur'}</p>`, false);
+        setValidation(`<p class="err">${err.message || 'Solver error'}</p>`, false);
     } finally {
         els.validateBtn.disabled = false;
     }
@@ -293,23 +300,64 @@ function launchPlay() {
     window.location.href = 'game.php?mode=custom';
 }
 
+async function submitLevel() {
+    if (!lastValidatedMap || !lastValidatedResult) return;
+    const btn = els.submitBtn;
+    btn.disabled = true;
+    btn.textContent = 'SUBMITTING…';
+
+    const setSubmitResult = (html, ok) => {
+        if (els.submitResult) {
+            els.submitResult.innerHTML = html;
+            els.submitResult.className = 'validation-result ' + (ok ? 'ok' : 'err');
+        }
+    };
+
+    try {
+        const resp = await fetch('api/submit_level.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                csrf_token:    window.CSRF_TOKEN,
+                map:           lastValidatedMap,
+                solution:      lastValidatedResult.moves ? lastValidatedResult.moves.join('') : '',
+                optimal_moves: lastValidatedResult.moves ? lastValidatedResult.moves.length : 0,
+                ghost_safe:    !lastValidatedResult.fallback,
+            }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            setSubmitResult(`<p class="ok">✓ Level submitted! ID #${data.level_id} — it will appear in the community campaign.</p>`, true);
+            btn.textContent = 'SUBMITTED ✓';
+        } else {
+            setSubmitResult(`<p class="err">${data.error || 'Submission failed.'}</p>`, false);
+            btn.disabled = false;
+            btn.textContent = 'SUBMIT TO CAMPAIGN';
+        }
+    } catch (err) {
+        setSubmitResult(`<p class="err">Network error: ${err.message}</p>`, false);
+        btn.disabled = false;
+        btn.textContent = 'SUBMIT TO CAMPAIGN';
+    }
+}
+
 function exportLevel() {
     const text = getLevelText();
-    const name = prompt('Nom du niveau (pour le fichier) :', 'mon-niveau');
+    const name = prompt('Level name (for the file):', 'my-level');
     if (name === null) return;
     const payload = {
         version: 1,
-        name: name || 'mon-niveau',
+        name: name || ‘my-level’,
         map: text,
         exportedAt: new Date().toISOString(),
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: ‘application/json’ });
+    const a = document.createElement(‘a’);
     a.href = URL.createObjectURL(blob);
-    a.download = (name || 'mon-niveau').replace(/[^\w\-]+/g, '_') + '.ombrequatre.json';
+    a.download = (name || ‘my-level’).replace(/[^\w\-]+/g, ‘_’) + ‘.ombrequatre.json’;
     a.click();
     URL.revokeObjectURL(a.href);
-    setStatus('Fichier exporté (.json). Partagez-le avec d’autres joueurs.');
+    setStatus(‘File exported (.json). Share it with other players.’);
 }
 
 function importLevel() {
@@ -335,7 +383,7 @@ function init() {
         const w = parseInt(document.getElementById('gridWidth').value, 10);
         const h = parseInt(document.getElementById('gridHeight').value, 10);
         resizeGrid(w, h);
-        setStatus(`Carte ${w}×${h}.`);
+        setStatus(`Grid resized to ${w}×${h}.`);
     });
 
     document.getElementById('borderWallsBtn').addEventListener('click', applyBorderWalls);
@@ -344,6 +392,7 @@ function init() {
     document.getElementById('playSkipBtn').addEventListener('click', launchPlay);
     document.getElementById('exportBtn').addEventListener('click', exportLevel);
     document.getElementById('importBtn').addEventListener('click', importLevel);
+    if (els.submitBtn) els.submitBtn.addEventListener('click', submitLevel);
 
     document.getElementById('importFile').addEventListener('change', async (e) => {
         const file = e.target.files?.[0];
@@ -357,7 +406,7 @@ function init() {
                 loadFromText(raw);
             }
         } catch (err) {
-            setStatus('Import invalide : ' + err.message, true);
+            setStatus('Invalid import: ' + err.message, true);
         }
         e.target.value = '';
     });

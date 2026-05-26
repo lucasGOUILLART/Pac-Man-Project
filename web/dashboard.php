@@ -19,9 +19,11 @@ if (!$user) {
 
 $stmt = $pdo->prepare('
     SELECT n.id, n.difficulte, n.score_max,
-           ig.score_niveau AS best_score, ig.nb_piece AS gems_collected
+           ig.score_niveau AS best_score, ig.nb_piece AS gems_collected,
+           ig.temps_best
     FROM niveau n
     LEFT JOIN in_game ig ON ig.id_niveau = n.id AND ig.id_joueur = ?
+    WHERE n.auteur_id IS NULL
     ORDER BY n.id ASC
 ');
 $stmt->execute([$userId]);
@@ -57,9 +59,16 @@ $levels = $stmt->fetchAll();
                     <span class="star <?= $i <= $diff ? 'on' : '' ?>">★</span>
                 <?php endfor; ?>
             </div>
+            <?php
+                $tempsBest = $lvl['temps_best'] !== null ? (int)$lvl['temps_best'] : null;
+                $timeStr = $tempsBest !== null
+                    ? str_pad((string)intdiv($tempsBest, 60), 2, '0', STR_PAD_LEFT) . ':' . str_pad((string)($tempsBest % 60), 2, '0', STR_PAD_LEFT)
+                    : '—';
+            ?>
             <div class="level-meta">
                 <div>Max score: <strong><?= number_format((int)$lvl['score_max']) ?></strong></div>
                 <div>Your best: <strong><?= number_format((int)($lvl['best_score'] ?? 0)) ?></strong></div>
+                <div>Best time: <strong><?= e($timeStr) ?></strong></div>
             </div>
             <?php if ($isLocked): ?>
                 <div class="level-action locked-tag">LOCKED</div>

@@ -1997,3 +1997,112 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     font-size: 16px;
     color: var(--paper-dim);
 }
+
+/* =========================================================
+   Leaderboard
+   ========================================================= */
+
+.leaderboard-body { padding-bottom: 50px; }
+
+.leaderboard-shell {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.lb-section h2 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--gold);
+    margin-bottom: 20px;
+    letter-spacing: 0.06em;
+}
+
+.lb-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 17px;
+}
+.lb-table th {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--gold-dark);
+    letter-spacing: 0.05em;
+    text-align: left;
+    padding: 6px 12px;
+    border-bottom: 2px solid var(--stone);
+}
+.lb-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(39, 68, 107, 0.5);
+    vertical-align: middle;
+}
+.lb-table tr:hover td { background: rgba(39, 68, 107, 0.3); }
+.lb-me td { background: rgba(224, 185, 90, 0.08); }
+.lb-rank { font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--stone-light); }
+.lb-pseudo { color: var(--cyan); font-weight: bold; }
+.lb-score { color: var(--gold); font-weight: bold; }
+
+.medal { font-size: 20px; }
+.medal.gold   { color: #ffd700; text-shadow: 0 0 8px #ffd700; }
+.medal.silver { color: #c0c0c0; text-shadow: 0 0 8px #c0c0c0; }
+.medal.bronze { color: #cd7f32; text-shadow: 0 0 8px #cd7f32; }
+
+.you-tag {
+    display: inline-block;
+    background: var(--gold-dark);
+    color: var(--paper);
+    font-size: 10px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    border-radius: 2px;
+    font-family: 'Press Start 2P', monospace;
+}
+
+.star { color: var(--stone-light); }
+.star.on { color: var(--gold); }
+
+/* Submit result styling inside editor */
+#submitResult { margin-top: 10px; }
+
+/* ── Play sub-menu (play.php) ─────────────────────────────────── */
+.play-columns {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 32px auto;
+    max-width: 1000px;
+    padding: 0 16px;
+}
+.play-card {
+    flex: 1 1 260px;
+    max-width: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 28px 20px;
+    text-align: center;
+}
+.play-card h2 {
+    font-size: 13px;
+    color: var(--gold);
+    letter-spacing: 2px;
+    margin: 0;
+}
+.play-card p {
+    font-size: 11px;
+    color: var(--stone-light);
+    line-height: 1.7;
+    margin: 0;
+    flex: 1;
+}
+.play-back {
+    display: flex;
+    justify-content: center;
+    margin-top: 8px;
+}

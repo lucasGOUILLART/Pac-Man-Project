@@ -11,7 +11,7 @@ function showParade(overlayEl, message) {
     overlayEl.hidden = false;
     overlayEl.innerHTML = `
         <div class="solver-parade panel">
-            <p class="parade-title">${message || 'Vérification du labyrinthe…'}</p>
+            <p class="parade-title">${message || 'Verifying the maze…'}</p>
             <div class="parade-track" aria-hidden="true">
                 <img class="parade-sprite parade-ghost g1" src="img/fantomeRougeMouvement.png" alt="">
                 <img class="parade-sprite parade-ghost g2" src="img/fantomeVertMouvement.png" alt="">
@@ -19,7 +19,7 @@ function showParade(overlayEl, message) {
                 <img class="parade-sprite parade-knight" src="img/chevalierMouvement1.png" alt="">
             </div>
             <p class="parade-progress" id="paradeProgress">0,0 s / 15 s</p>
-            <p class="parade-hint">Le chevalier poursuit les ombres…</p>
+            <p class="parade-hint">The knight chases the shadows…</p>
         </div>
     `;
     const progressEl = overlayEl.querySelector('#paradeProgress');
@@ -42,42 +42,27 @@ function showParade(overlayEl, message) {
  */
 function verifyLevel(levelText, opts = {}) {
     return new Promise((resolve, reject) => {
-        if (!window.OmbrequatreEngine?.solveLocally) {
-            reject(new Error('Moteur de jeu non chargé.'));
+        if (!window.OmbrequatreEngine?.solveViaC) {
+            reject(new Error('Game engine not loaded.'));
             return;
         }
         const overlay = document.getElementById('solverOverlay');
         const hide = showParade(overlay, opts.message);
-        const maxTimeMs = Math.min(opts.maxTimeMs || SOLVER_MAX_MS, SOLVER_MAX_MS);
         const requireSafe = opts.requireSafe !== false;
         const allowFallback = opts.allowFallback === true;
 
-        const run = () => {
-            try {
-                let result = window.OmbrequatreEngine.solveLocally(levelText, {
-                    requireSafe,
-                    allowFallback: false,
-                    maxTimeMs,
-                    maxNodes: opts.maxNodes || 4_000_000,
-                });
-                if (!result.found && allowFallback) {
-                    result = window.OmbrequatreEngine.solveLocally(levelText, {
-                        requireSafe: false,
-                        allowFallback: false,
-                        maxTimeMs: Math.max(3000, Math.floor(maxTimeMs / 2)),
-                        maxNodes: 2_000_000,
-                    });
-                    if (result.found) result.fallback = true;
-                }
-                hide();
-                resolve(result);
-            } catch (err) {
-                hide();
-                reject(err);
-            }
-        };
-
-        setTimeout(run, 50);
+        // Le solveur C (endpoint api/solve.php) gère lui-même le repli
+        // gem-only quand allowFallback est vrai.
+        window.OmbrequatreEngine.solveViaC(levelText, {
+            requireSafe,
+            allowFallback,
+        }).then(result => {
+            hide();
+            resolve(result);
+        }).catch(err => {
+            hide();
+            reject(err);
+        });
     });
 }
 

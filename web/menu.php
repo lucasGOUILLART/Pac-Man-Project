@@ -98,14 +98,13 @@ $powerUps = powerUpsEnabled();
             </form>
 
             <nav class="menu-buttons">
-                <a class="menu-btn primary" href="dashboard.php">
-                    <span class="btn-icon">▶</span> CAMPAGNE
+                <a class="menu-btn primary" href="play.php">
+                    <span class="btn-icon">▶</span> PLAY
                 </a>
-                <a class="menu-btn" href="editor.php">CONCEVOIR UN NIVEAU</a>
-                <a class="menu-btn" href="generator.php">LABYRINTHES ALÉATOIRES</a>
+                <a class="menu-btn" href="leaderboard.php">LEADERBOARD</a>
                 <a class="menu-btn" href="options.php">OPTIONS</a>
-                <a class="menu-btn" href="bestiaire.php">BESTIAIRE</a>
-                <a class="menu-btn quit" href="logout.php">QUITTER</a>
+                <a class="menu-btn" href="bestiaire.php">BESTIARY</a>
+                <a class="menu-btn quit" href="logout.php">QUIT</a>
             </nav>
         </section>
 
