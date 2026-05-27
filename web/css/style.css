@@ -1920,13 +1920,26 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     width: 0;
     margin: 0;
     opacity: 0.55;
-    font-size: 13px;
-    padding: 10px 6px;
+    font-size: 11px;
+    padding: 10px 4px;
+    letter-spacing: 0.03em;
 }
 .diff-selector .diff-btn.active {
     opacity: 1;
     border-color: var(--gold);
     color: var(--gold);
+}
+/* IMPOSSIBLE button — blood-red with skull energy */
+.diff-selector .diff-btn--impossible {
+    color: #cc2222;
+    border-color: #6b1010;
+}
+.diff-selector .diff-btn--impossible.active {
+    opacity: 1;
+    border-color: #cc2222;
+    color: #ff3333;
+    box-shadow: 0 0 12px rgba(200, 20, 20, 0.55), inset 0 0 8px rgba(200, 20, 20, 0.15);
+    text-shadow: 0 0 8px rgba(255, 60, 60, 0.7);
 }
 #diffDesc {
     margin-bottom: 14px;
@@ -2033,6 +2046,13 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     font-size: 10px;
     color: var(--cyan);
     margin-bottom: 8px;
+}
+/* Live best-of info injected during IMPOSSIBLE generation */
+.impossible-info {
+    color: #ff4444 !important;
+    font-size: 9px !important;
+    margin-bottom: 12px;
+    letter-spacing: 0.04em;
 }
 .parade-hint {
     font-size: 16px;

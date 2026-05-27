@@ -1,161 +1,113 @@
 /**
- * Template-based level generator — 3 difficulty levels, solver-verified.
+ * Random level generator — C-backed maze generation, solver-verified.
  *
- * Approach: structural blueprints (fixed wall layout) + random gem placement.
- * This guarantees connected corridors and fast solver convergence.
+ * Approach: POST to api/generate.php which calls the compiled C generator
+ * (solver/generator.exe / solver/generator).  The C binary uses a DFS
+ * Recursive Backtracker to produce unique, fully-connected mazes every run.
+ * The solver then verifies solvability before the level is shown.
  * allowFallback:true means a gems-only solution is accepted when no ghost-safe
  * path exists — this dramatically improves generation success rate.
  */
 (() => {
 'use strict';
 
-const { serializeLevel, validateLevelStructure, parseLevelText } = window.LevelUtils;
+const { serializeLevel, validateLevelStructure, parseLevelText, countGems, countGhostTypes } = window.LevelUtils;
 const STORAGE_KEY = 'ombrequatre_play_map';
 
-// ── Structural blueprints ────────────────────────────────────────────────────
-// Pure wall/floor patterns. '_' = floor (gems placed here randomly).
-// No gems or ghosts — those are added dynamically.
+// ── JS fallback blueprints (used when C binary is not yet compiled) ──────────
+// Pure wall/floor patterns. '_' = floor, '*' = portal for blue ghost.
 
 const BLUEPRINTS = {
     easy: [
-        // E1: 11x7 — simple parallel rails
-        ['###########',
-         '#_________#',
-         '#_###_###_#',
-         '#_________#',
-         '#_###_###_#',
-         '#_________#',
-         '###########'],
-        // E2: 13x7 — wide open rails
-        ['#############',
-         '#___________#',
-         '#_###___###_#',
-         '#___________#',
-         '#_###___###_#',
-         '#___________#',
-         '#############'],
-        // E3: 11x9 — grid pillars
-        ['###########',
-         '#_________#',
-         '#_#_#_#_#_#',
-         '#_________#',
-         '#_#___#___#',
-         '#_________#',
-         '#_#_#_#_#_#',
-         '#_________#',
-         '###########'],
-        // E4: 13x9 — cross-room light
-        ['#############',
-         '#___________#',
-         '#_###_###_#_#',
-         '#___________#',
-         '#_###___###_#',
-         '#___________#',
-         '#_###_###_#_#',
-         '#___________#',
-         '#############'],
+        ['###########','#_________#','#_###_###_#','#_________#','#_###_###_#','#_________#','###########'],
+        ['#############','#___________#','#_###___###_#','#___________#','#_###___###_#','#___________#','#############'],
+        ['###########','#_________#','#_#_#_#_#_#','#_________#','#_#___#___#','#_________#','#_#_#_#_#_#','#_________#','###########'],
+        ['#############','#___________#','#_###_###_#_#','#___________#','#_###___###_#','#___________#','#_###_###_#_#','#___________#','#############'],
     ],
     medium: [
-        // M1: 13x9 — campaign style (like level 5)
-        ['#############',
-         '#___________#',
-         '#_###_###_#_#',
-         '#___________#',
-         '#_###___###_#',
-         '#___________#',
-         '#_###_###_#_#',
-         '#___________#',
-         '#############'],
-        // M2: 13x11 — extended cross
-        ['#############',
-         '#___________#',
-         '#_###_###_#_#',
-         '#___________#',
-         '#_###___###_#',
-         '#___________#',
-         '#_###___###_#',
-         '#___________#',
-         '#_###_###_#_#',
-         '#___________#',
-         '#############'],
-        // M3: 15x9 — wide channel
-        ['###############',
-         '#_____________#',
-         '#_###_###_###_#',
-         '#_____________#',
-         '#_###_____###_#',
-         '#_____________#',
-         '#_###_###_###_#',
-         '#_____________#',
-         '###############'],
-        // M4: 11x11 — tall narrow
-        ['###########',
-         '#_________#',
-         '#_###_###_#',
-         '#_________#',
-         '#_###___#_#',
-         '#_________#',
-         '#_#___###_#',
-         '#_________#',
-         '#_###_###_#',
-         '#_________#',
-         '###########'],
+        ['#############','#___________#','#_###_###_#_#','#___________#','#_###___###_#','#___________#','#_###_###_#_#','#___________#','#############'],
+        ['#############','#___________#','#_###_###_#_#','#___________#','#_###___###_#','#___________#','#_###___###_#','#___________#','#_###_###_#_#','#___________#','#############'],
+        ['###############','#_____________#','#_###_###_###_#','#_____________#','#_###_____###_#','#_____________#','#_###_###_###_#','#_____________#','###############'],
+        ['###########','#_________#','#_###_###_#','#_________#','#_###___#_#','#_________#','#_#___###_#','#_________#','#_###_###_#','#_________#','###########'],
     ],
     hard: [
-        // H1: 15x11 — campaign style (like level 7)
-        ['###############',
-         '#_____________#',
-         '#_###_###_#_#_#',
-         '#_____________#',
-         '#_#_###___###_#',
-         '#_____________#',
-         '#_#_###___###_#',
-         '#_____________#',
-         '#_###_###_#_#_#',
-         '#_____________#',
-         '###############'],
-        // H2: 15x13 — large labyrinth
-        ['###############',
-         '#_____________#',
-         '#_###_###_#_#_#',
-         '#_____________#',
-         '#_#_###___###_#',
-         '#_____________#',
-         '#_____________#',
-         '#_#_###___###_#',
-         '#_____________#',
-         '#_###_###_#_#_#',
-         '#_____________#',
-         '#_____________#',
-         '###############'],
-        // H3: 13x13 — tall medium
-        ['#############',
-         '#___________#',
-         '#_###_###_#_#',
-         '#___________#',
-         '#_#_###_#___#',
-         '#___________#',
-         '#___________#',
-         '#_#_#___#___#',
-         '#___________#',
-         '#_###_###_#_#',
-         '#___________#',
-         '#___________#',
-         '#############'],
-        // H4: 15x11 — complex grid
-        ['###############',
-         '#_____________#',
-         '#_#_###_###_#_#',
-         '#_____________#',
-         '#_#___#___#___#',
-         '#_____________#',
-         '#_###_#___###_#',
-         '#_____________#',
-         '#_#___###_#___#',
-         '#_____________#',
-         '###############'],
+        ['###############','#_____________#','#_###_###_#_#_#','#_____________#','#_#_###___###_#','#_____________#','#_#_###___###_#','#_____________#','#_###_###_#_#_#','#_____________#','###############'],
+        ['###############','#_____________#','#_###_###_#_#_#','#_____________#','#_#_###___###_#','#_____________#','#_____________#','#_#_###___###_#','#_____________#','#_###_###_#_#_#','#_____________#','#_____________#','###############'],
+        ['#############','#___________#','#_###_###_#_#','#___________#','#_#_###_#___#','#___________#','#___________#','#_#_#___#___#','#___________#','#_###_###_#_#','#___________#','#___________#','#############'],
+        ['###############','#_____________#','#_#_###_###_#_#','#_____________#','#_#___#___#___#','#_____________#','#_###_#___###_#','#_____________#','#_#___###_#___#','#_____________#','###############'],
+    ],
+    impossible: [
+        ['###############','#*___________*#','#_#_###_###_#_#','#_____________#','#_###_#_#_###_#','#_____________#','#_#_#_#_#_#_#_#','#_____________#','#_#_#_#_#_#_#_#','#_____________#','#_###_#_#_###_#','#_____________#','#_#_###_###_#_#','#*___________*#','###############'],
+        ['#################','#*_____________*#','#_###_###_###_#_#','#_______________#','#_#_###___###_#_#','#_______________#','#_#___#_#___#___#','#_______________#','#_#_###___###_#_#','#_______________#','#_###_###_###_#_#','#*_____________*#','#################'],
+        ['###############','#_____________#','#_###_###_###_#','#*___________*#','#_#___#___#___#','#_____________#','#_###_#_#_###_#','#_____________#','#___#_#_#___#_#','#_____________#','#_#___#___#___#','#*___________*#','#_###_###_###_#','#_____________#','###############'],
+        ['###############','#_____________#','#_#_###_#_###_#','#_____________#','#_###_#_###_#_#','#*___________*#','#_#_#_#_#_#_#_#','#_____________#','#_#_#_#_#_#_#_#','#*___________*#','#_###_#_###_#_#','#_____________#','#_#_###_#_###_#','#_____________#','###############'],
     ],
 };
+
+function _randInt(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+function _shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+function _manhattan(a, b) { return Math.abs(a[0]-b[0]) + Math.abs(a[1]-b[1]); }
+
+function _tryBuildLevelJS(diff) {
+    const profile  = PROFILES[diff];
+    const bp       = BLUEPRINTS[diff][_randInt(0, BLUEPRINTS[diff].length - 1)];
+    const grid     = bp.map(row => row.split(''));
+    const h = grid.length, w = grid[0].length;
+
+    const floors = [], portals = [];
+    for (let r = 0; r < h; r++)
+        for (let c = 0; c < w; c++) {
+            if (grid[r][c] === '_') floors.push([r, c]);
+            else if (grid[r][c] === '*') portals.push([r, c]);
+        }
+
+    const hasBlue = diff === 'impossible';
+    const ghostList = { easy:[], medium:['red'], hard:['red','green'],
+                        impossible:['red','green','yellow','blue'] }[diff];
+    const nonBlue = ghostList.filter(g => g !== 'blue');
+
+    if (floors.length < profile.minGems + nonBlue.length + 1) return null;
+    if (hasBlue && portals.length < 2) return null;
+
+    _shuffle(floors);
+    const [sr, sc] = floors[0];
+    const usedKeys = new Set([`${sr},${sc}`]);
+
+    const gemCount = _randInt(
+        profile.minGems,
+        Math.min(profile.maxGems, floors.length - nonBlue.length - 1)
+    );
+    let placed = 0;
+    for (const [r, c] of floors) {
+        if (placed >= gemCount) break;
+        const key = `${r},${c}`;
+        if (usedKeys.has(key)) continue;
+        grid[r][c] = '.'; usedKeys.add(key); placed++;
+    }
+    if (placed < profile.minGems) return null;
+
+    const meta = { width: w, height: h, start: { row: sr, col: sc }, ghosts: {} };
+
+    if (hasBlue) {
+        const [pr, pc] = portals[_randInt(0, portals.length - 1)];
+        meta.ghosts.blue = { row: pr, col: pc };
+    }
+    const freeFloors = floors
+        .filter(([r, c]) => !usedKeys.has(`${r},${c}`))
+        .sort((a, b) => _manhattan(b, [sr,sc]) - _manhattan(a, [sr,sc]));
+    for (let i = 0; i < nonBlue.length && i < freeFloors.length; i++)
+        meta.ghosts[nonBlue[i]] = { row: freeFloors[i][0], col: freeFloors[i][1] };
+
+    const text = serializeLevel(meta, grid);
+    if (!validateLevelStructure(meta, grid).ok) return null;
+    return { text, gemCount: placed, ghosts: Object.keys(meta.ghosts).length };
+}
 
 // ── Difficulty profiles ──────────────────────────────────────────────────────
 
@@ -164,25 +116,33 @@ const PROFILES = {
         label: 'EASY',
         minGems: 8,  maxGems: 14,
         minMoves: 1, maxMoves: 60,
-        ghosts: [],
         maxAttempts: 40,
+        timeBudget:  0,
         desc: 'No ghosts · 8-14 gems · short path',
     },
     medium: {
         label: 'MEDIUM',
         minGems: 14, maxGems: 22,
         minMoves: 1, maxMoves: 80,
-        ghosts: ['red'],
         maxAttempts: 40,
+        timeBudget:  0,
         desc: '1 red ghost · 14-22 gems · moderate path',
     },
     hard: {
         label: 'HARD',
         minGems: 18, maxGems: 28,
         minMoves: 1, maxMoves: 100,
-        ghosts: ['red', 'green'],
         maxAttempts: 40,
+        timeBudget:  0,
         desc: '2 ghosts · 18-28 gems · long path',
+    },
+    impossible: {
+        label: 'IMPOSSIBLE',
+        minGems:  20, maxGems: 28,
+        minMoves: 15, maxMoves: 500,
+        maxAttempts: 0,
+        timeBudget: 14000,  // 14 s — keeps the hardest solvable level found
+        desc: '4 ghosts + portails · 20-28 gemmes · 15 s pour forger le chemin le plus difficile',
     },
 };
 
@@ -190,90 +150,44 @@ let currentDiff = 'medium';
 let lastMap    = null;
 let lastResult = null;
 
-// ── Utilities ────────────────────────────────────────────────────────────────
+// ── Level fetch (C binary → JS fallback) ─────────────────────────────────────
 
-function randInt(a, b) {
-    return a + Math.floor(Math.random() * (b - a + 1));
-}
+// Set to true once we know the C binary is unavailable, to skip future API calls.
+let _cGenUnavailable = false;
 
-function shuffle(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-}
+/**
+ * Produces one raw level candidate.
+ * Primary:  POST api/generate.php  → compiled C generator (DFS Recursive Backtracker).
+ * Fallback: JS blueprint system    → used if C binary is not yet compiled.
+ * Returns { text, gemCount, ghosts } or null on failure.
+ */
+async function fetchLevel(diff) {
+    // ── Try C generator via API ──
+    if (!_cGenUnavailable) {
+        try {
+            const resp = await fetch('api/generate.php', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ diff, csrf_token: window.CSRF_TOKEN }),
+            });
+            const data = await resp.json();
 
-function manhattan(a, b) {
-    return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
-}
-
-// ── Level builder ────────────────────────────────────────────────────────────
-
-function tryBuildLevel(diff) {
-    const profile = PROFILES[diff];
-    const bps = BLUEPRINTS[diff];
-    const bp = bps[randInt(0, bps.length - 1)];
-
-    // Parse blueprint into a mutable grid
-    const grid = bp.map(row => row.split(''));
-    const h = grid.length;
-    const w = grid[0].length;
-
-    // Collect all floor cells
-    const floors = [];
-    for (let r = 0; r < h; r++) {
-        for (let c = 0; c < w; c++) {
-            if (grid[r][c] === '_') floors.push([r, c]);
+            if (resp.status === 503 || data.error === 'generator_unavailable') {
+                // Binary not compiled yet — switch permanently to JS fallback
+                _cGenUnavailable = true;
+            } else if (data.ok && data.map) {
+                const { meta, grid } = parseLevelText(data.map);
+                if (validateLevelStructure(meta, grid).ok) {
+                    return { text: data.map, gemCount: countGems(grid), ghosts: countGhostTypes(meta) };
+                }
+            }
+        } catch (_) {
+            /* network error — fall through to JS */
         }
     }
 
-    const needed = profile.minGems + profile.ghosts.length + 1;
-    if (floors.length < needed) return null;
-
-    shuffle(floors);
-
-    // Knight start = first floor cell
-    const [sr, sc] = floors[0];
-    const usedKeys = new Set([sr + ',' + sc]);
-
-    // Place gems
-    const gemCount = randInt(
-        profile.minGems,
-        Math.min(profile.maxGems, floors.length - profile.ghosts.length - 1)
-    );
-    let placed = 0;
-    for (const [r, c] of floors) {
-        if (placed >= gemCount) break;
-        const key = r + ',' + c;
-        if (usedKeys.has(key)) continue;
-        grid[r][c] = '.';
-        usedKeys.add(key);
-        placed++;
-    }
-    if (placed < profile.minGems) return null;
-
-    // Build meta
-    const meta = {
-        width: w, height: h,
-        start: { row: sr, col: sc },
-        ghosts: {},
-    };
-
-    // Place ghosts on floor cells far from start
-    const freeFloors = floors
-        .filter(([r, c]) => !usedKeys.has(r + ',' + c))
-        .sort((a, b) => manhattan(b, [sr, sc]) - manhattan(a, [sr, sc]));
-
-    for (let i = 0; i < profile.ghosts.length && i < freeFloors.length; i++) {
-        const [r, c] = freeFloors[i];
-        meta.ghosts[profile.ghosts[i]] = { row: r, col: c };
-    }
-
-    const text = serializeLevel(meta, grid);
-    if (!validateLevelStructure(meta, grid).ok) return null;
-
-    return { text, gemCount: placed, ghosts: Object.keys(meta.ghosts).length };
+    // ── JS blueprint fallback ──
+    return _tryBuildLevelJS(diff);
 }
 
 // ── Preview (canvas — same render logic as game.js) ──────────────────────────
@@ -411,29 +325,113 @@ function setStatus(msg, err) {
 
 // ── Generate ─────────────────────────────────────────────────────────────────
 
-async function generate() {
-    const diff = currentDiff;
-    const profile = PROFILES[diff];
-    const btn = document.getElementById('generateBtn');
-    const playBtn = document.getElementById('playBtn');
+function _resetGeneratorUI(btn, playBtn) {
     btn.disabled = true;
     playBtn.disabled = true;
     document.getElementById('saveGenBtn').disabled = true;
-    lastMap    = null;
-    lastResult = null;
+    lastMap = null; lastResult = null;
     document.getElementById('genPreview').innerHTML = '';
-    const saveResultEl = document.getElementById('genSaveResult');
-    if (saveResultEl) { saveResultEl.textContent = ''; saveResultEl.className = 'validation-result'; }
+    const sr = document.getElementById('genSaveResult');
+    if (sr) { sr.textContent = ''; sr.className = 'validation-result'; }
+}
+
+function _finishGeneration(candidate, result, profile, attempt, btn, playBtn, label) {
+    lastMap    = candidate.text;
+    lastResult = result;
+    renderPreview(candidate.text);
+    const ghostNote = candidate.ghosts > 0
+        ? ', ' + candidate.ghosts + ' ghost(s)' + (result.fallback ? ' ⚠ gems-only' : ' ✓ safe')
+        : '';
+    setStatus((label || profile.label) + ' — ' + candidate.gemCount + ' gems' + ghostNote +
+              ', ' + result.moves.length + ' optimal moves (' + attempt + ').');
+    playBtn.disabled = false;
+    document.getElementById('saveGenBtn').disabled = false;
+    btn.disabled = false;
+}
+
+async function generate() {
+    const diff    = currentDiff;
+    const profile = PROFILES[diff];
+    const btn     = document.getElementById('generateBtn');
+    const playBtn = document.getElementById('playBtn');
+
+    _resetGeneratorUI(btn, playBtn);
 
     const hideParade = window.SolverBridge.showParade(
         document.getElementById('solverOverlay'),
-        profile.label + ' — generating maze…'
+        profile.timeBudget
+            ? 'IMPOSSIBLE — forging the ultimate challenge…'
+            : profile.label + ' — generating maze…'
     );
 
     await new Promise(r => setTimeout(r, 40));
 
+    // ── IMPOSSIBLE: time-based best-of ──────────────────────────────────────
+    if (profile.timeBudget) {
+        const deadline = Date.now() + profile.timeBudget;
+        let best     = null;
+        let attempts = 0;
+
+        // Inject a live-info element inside the parade overlay
+        const overlayEl = document.getElementById('solverOverlay');
+        const parade    = overlayEl.querySelector('.solver-parade');
+        let   infoEl    = null;
+        if (parade) {
+            infoEl = document.createElement('p');
+            infoEl.className   = 'parade-progress impossible-info';
+            infoEl.textContent = 'Searching…';
+            const hint = parade.querySelector('.parade-hint');
+            if (hint) parade.insertBefore(infoEl, hint);
+            else parade.appendChild(infoEl);
+        }
+
+        while (Date.now() < deadline) {
+            attempts++;
+            const candidate = await fetchLevel(diff);
+            if (!candidate) continue;
+
+            if (infoEl) {
+                const tLeft = Math.max(0, deadline - Date.now());
+                infoEl.textContent = 'Attempt ' + attempts +
+                    (best ? ' · Best: ' + best.result.moves.length + ' moves' : '') +
+                    ' · ' + (tLeft / 1000).toFixed(1) + 's left';
+            }
+
+            try {
+                const result = await window.OmbrequatreEngine.solveViaC(candidate.text, {
+                    requireSafe:   true,
+                    allowFallback: true,
+                });
+
+                if (!result.found) continue;
+                const moves = result.moves.length;
+                if (moves < profile.minMoves) continue;
+
+                // Keep only the hardest solvable level (most optimal moves)
+                if (!best || moves > best.result.moves.length) {
+                    best = { candidate, result };
+                }
+            } catch (_) { /* solver timeout or error — try again */ }
+        }
+
+        hideParade();
+
+        if (!best) {
+            setStatus('No level generated — try again.', true);
+            btn.disabled = false;
+            return;
+        }
+
+        _finishGeneration(
+            best.candidate, best.result, profile, 'best of ' + attempts, btn, playBtn,
+            'IMPOSSIBLE (' + best.result.moves.length + ' moves)'
+        );
+        return;
+    }
+
+    // ── Normal: first-valid attempt-based ───────────────────────────────────
     for (let attempt = 1; attempt <= profile.maxAttempts; attempt++) {
-        const candidate = tryBuildLevel(diff);
+        const candidate = await fetchLevel(diff);
         if (!candidate) continue;
 
         const progressEl = document.querySelector('#paradeProgress');
@@ -450,17 +448,7 @@ async function generate() {
             if (moves < profile.minMoves || moves > profile.maxMoves) continue;
 
             hideParade();
-            lastMap = candidate.text;
-            renderPreview(candidate.text);
-
-            const ghostNote = candidate.ghosts > 0
-                ? ', ' + candidate.ghosts + ' ghost(s)' + (result.fallback ? ' ⚠ gems-only' : '')
-                : '';
-            setStatus(profile.label + ' — ' + candidate.gemCount + ' gems' + ghostNote + ', ' + moves + ' optimal moves (attempt ' + attempt + ').');
-            lastResult = result;
-            playBtn.disabled = false;
-            document.getElementById('saveGenBtn').disabled = false;
-            btn.disabled = false;
+            _finishGeneration(candidate, result, profile, 'attempt ' + attempt, btn, playBtn);
             return;
         } catch (_) { /* retry */ }
     }

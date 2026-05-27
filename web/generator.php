@@ -8,7 +8,7 @@ requireLogin();
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Random Mazes — Les fantômes d'Ombrequatre</title>
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body class="generator-body">
 <div class="vignette"></div>
@@ -29,6 +29,7 @@ requireLogin();
         <button type="button" class="menu-btn diff-btn" data-diff="easy">EASY</button>
         <button type="button" class="menu-btn diff-btn active" data-diff="medium">MEDIUM</button>
         <button type="button" class="menu-btn diff-btn" data-diff="hard">HARD</button>
+        <button type="button" class="menu-btn diff-btn diff-btn--impossible" data-diff="impossible">IMPOSSIBLE</button>
     </div>
     <p id="diffDesc" class="editor-hint center"></p>
 
@@ -48,9 +49,9 @@ requireLogin();
 <script>
 window.CSRF_TOKEN = <?= json_encode(\csrfToken()) ?>;
 </script>
-<script src="js/level-utils.js?v=6"></script>
+<script src="js/level-utils.js?v=8"></script>
 <script src="js/game.js?v=8"></script>
-<script src="js/solver-bridge.js?v=6"></script>
-<script src="js/generator.js?v=6"></script>
+<script src="js/solver-bridge.js?v=8"></script>
+<script src="js/generator.js?v=9"></script>
 </body>
 </html>
