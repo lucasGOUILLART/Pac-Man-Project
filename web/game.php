@@ -79,7 +79,7 @@ if ($playMode === 'custom' || $playMode === 'generated') {
     </div>
     <div class="hud-right">
         <button id="solverBtn" class="nav-btn nav-btn-dark">HINT</button>
-        <button id="toggleSolutionsBtn" class="nav-btn nav-btn-dark">HIDE SOLUTION</button>
+        <button id="toggleSolutionsBtn" class="nav-btn nav-btn-dark">SHOW SOLUTION</button>
         <a href="menu.php" class="nav-btn nav-btn-dark">MENU</a>
     </div>
 </header>
@@ -126,6 +126,6 @@ window.LEVEL_DATA = <?= $levelDataJson ?>;
 window.USER_ID    = <?= (int)currentUserId() ?>;
 window.CSRF_TOKEN = <?= json_encode(csrfToken()) ?>;
 </script>
-<script src="js/game.js?v=5"></script>
+<script src="js/game.js?v=6"></script>
 </body>
 </html>

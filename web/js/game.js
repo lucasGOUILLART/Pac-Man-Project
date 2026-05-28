@@ -1412,7 +1412,7 @@ async function boot() {
     const gameMain = document.querySelector('.game-main');
     const solutionPanel = document.getElementById('solutionPanel');
     const toggleSolutionsBtn = document.getElementById('toggleSolutionsBtn');
-    let solutionsHidden = false;
+    let solutionsHidden = true;  // hidden by default; player reveals with the button
     const applySolutionsVisibility = () => {
         if (gameMain) {
             gameMain.classList.toggle('solutions-hidden', solutionsHidden);
