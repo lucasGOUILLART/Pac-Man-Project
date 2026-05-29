@@ -1,22 +1,25 @@
-﻿/**
- * Manual level designer — walls, size, ghosts, gems, import/export, solver check.
+/**
+ * Éditeur de niveaux manuel — murs, taille, fantômes, gemmes, import/export, vérification solveur.
  */
 (() => {
 'use strict';
 
+// On importe les utilitaires partagés depuis LevelUtils (level-utils.js)
 const { parseLevelText, serializeLevel, validateLevelStructure, countGems } = window.LevelUtils;
 
-const STORAGE_KEY = 'ombrequatre_play_map';
+const STORAGE_KEY = 'ombrequatre_play_map'; // Clé sessionStorage pour passer la carte au jeu
 
-let width = 11;
-let height = 9;
-let grid = [];
+// État global de l'éditeur
+let width = 11;   // Largeur initiale de la grille
+let height = 9;   // Hauteur initiale de la grille
+let grid = [];    // Grille 2D de caractères
 let meta = { width, height, start: { row: 1, col: 1 }, ghosts: {} };
-let tool = 'wall';
-let lastValidatedMap = null;
-let lastValidatedResult = null;
-let isPainting = false;
+let tool = 'wall';              // Outil actif pour le dessin
+let lastValidatedMap = null;    // Dernière carte validée par le solveur
+let lastValidatedResult = null; // Résultat du solveur pour la carte validée
+let isPainting = false;         // True quand le bouton de souris est maintenu enfoncé
 
+// Références aux éléments du DOM fréquemment utilisés
 const els = {
     grid: document.getElementById('editorGrid'),
     status: document.getElementById('editorStatus'),
@@ -32,9 +35,10 @@ const els = {
     saveBtn: document.getElementById('saveLevelBtn'),
 };
 
-// ID of the level currently being edited (0 = new level)
+// Identifiant du niveau en cours d'édition (0 = nouveau niveau)
 let currentLevelId = 0;
 
+// Crée une grille vide avec des murs sur les bordures et des sols à l'intérieur
 function emptyGrid(w, h) {
     const g = [];
     for (let r = 0; r < h; r++) {
@@ -47,11 +51,13 @@ function emptyGrid(w, h) {
     return g;
 }
 
+// Synchronise les dimensions dans l'objet meta
 function syncMetaSize() {
     meta.width = width;
     meta.height = height;
 }
 
+// Remplace toutes les cases de bordure par des murs
 function applyBorderWalls() {
     for (let r = 0; r < height; r++) {
         for (let c = 0; c < width; c++) {
@@ -63,8 +69,10 @@ function applyBorderWalls() {
     renderGrid();
 }
 
+// Redimensionne la grille en préservant le contenu existant
 function resizeGrid(newW, newH) {
     const next = emptyGrid(newW, newH);
+    // On copie les cases qui existent dans les deux dimensions
     for (let r = 0; r < Math.min(height, newH); r++) {
         for (let c = 0; c < Math.min(width, newW); c++) {
             next[r][c] = grid[r][c];
@@ -74,6 +82,7 @@ function resizeGrid(newW, newH) {
     height = newH;
     grid = next;
     syncMetaSize();
+    // On réinitialise les positions hors-limites
     if (meta.start.row >= height) meta.start.row = 1;
     if (meta.start.col >= width) meta.start.col = 1;
     for (const color of Object.keys(meta.ghosts)) {
@@ -83,15 +92,18 @@ function resizeGrid(newW, newH) {
     renderGrid();
 }
 
+// Vérifie si une case est accessible (non-mur)
 function isWalkableCell(r, c) {
     const ch = grid[r][c];
     return ch !== '#';
 }
 
+// Applique l'outil actif sur la case (r, c) — le cœur de l'interaction de dessin
 function paintCell(r, c) {
     switch (tool) {
         case 'wall':
             grid[r][c] = '#';
+            // Si on pose un mur sur le départ ou un fantôme, on les supprime
             if (meta.start?.row === r && meta.start?.col === c) meta.start = null;
             for (const color of Object.keys(meta.ghosts)) {
                 if (meta.ghosts[color].row === r && meta.ghosts[color].col === c) {
@@ -110,7 +122,7 @@ function paintCell(r, c) {
             if (grid[r][c] !== '#') grid[r][c] = '*';
             break;
         case 'knight':
-            if (!isWalkableCell(r, c)) return;
+            if (!isWalkableCell(r, c)) return; // Impossible de placer le chevalier sur un mur
             meta.start = { row: r, col: c };
             break;
         case 'ghost-red':
@@ -127,9 +139,11 @@ function paintCell(r, c) {
     renderGrid();
 }
 
+// Place automatiquement des gemmes sur des cases libres (éparpillées aléatoirement)
 function scatterGems() {
     const target = Math.max(1, Math.min(30, parseInt(document.getElementById('targetGems').value, 10) || 12));
     const floors = [];
+    // On collecte les cases libres valides (pas la case de départ, pas une case de fantôme)
     for (let r = 1; r < height - 1; r++) {
         for (let c = 1; c < width - 1; c++) {
             if (grid[r][c] === '_' || grid[r][c] === '.') {
@@ -140,6 +154,7 @@ function scatterGems() {
             }
         }
     }
+    // On efface d'abord toutes les gemmes existantes
     for (let r = 0; r < height; r++) {
         for (let c = 0; c < width; c++) {
             if (grid[r][c] === '.') grid[r][c] = '_';
@@ -156,6 +171,7 @@ function scatterGems() {
     renderGrid();
 }
 
+// Algorithme de mélange Fisher-Yates
 function shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -163,8 +179,10 @@ function shuffle(arr) {
     }
 }
 
+// Correspondance caractère → classe CSS pour le style des cases dans la grille
 const CELL_TYPE = { '#': 'wall', '_': 'floor', '.': 'gem', 'o': 'potion', 'c': 'watch', '*': 'portal' };
 
+// Calcule les classes CSS d'une case (type + éventuels indicateurs chevalier/fantôme)
 function cellClass(r, c) {
     const ch = grid[r][c];
     const cls = ['cell', `t-${CELL_TYPE[ch] || 'floor'}`];
@@ -175,6 +193,7 @@ function cellClass(r, c) {
     return cls.join(' ');
 }
 
+// Redessine entièrement la grille dans le DOM
 function renderGrid() {
     els.grid.style.gridTemplateColumns = `repeat(${width}, 28px)`;
     els.grid.innerHTML = '';
@@ -186,6 +205,7 @@ function renderGrid() {
             cell.dataset.row = String(r);
             cell.dataset.col = String(c);
             cell.setAttribute('aria-label', `Case ${r},${c}`);
+            // Étiquette de la case : symboles pour gemme, portail, chevalier, fantôme
             let label = grid[r][c] === '#' ? '' : (grid[r][c] === '.' ? '★' : (grid[r][c] === '*' ? '◎' : ''));
             if (meta.start?.row === r && meta.start.col === c) label = '♞';
             for (const [color, pos] of Object.entries(meta.ghosts)) {
@@ -200,13 +220,14 @@ function renderGrid() {
                 paintCell(r, c);
             });
             cell.addEventListener('mouseenter', () => {
-                if (isPainting) paintCell(r, c);
+                if (isPainting) paintCell(r, c); // Peinture continue en maintenant le clic
             });
             els.grid.appendChild(cell);
         }
     }
 }
 
+// Met à jour les compteurs de gemmes et de fantômes dans la barre d'outils
 function updateCounters() {
     const gems = countGems(grid);
     const ghosts = Object.keys(meta.ghosts).length;
@@ -225,12 +246,14 @@ function setValidation(html, ok) {
     els.validation.className = 'validation-result ' + (ok ? 'ok' : 'err');
 }
 
+// Sérialise l'état courant de l'éditeur en texte de niveau
 function getLevelText() {
-    if (!meta.start) meta.start = { row: 1, col: 1 };
+    if (!meta.start) meta.start = { row: 1, col: 1 }; // Position de départ par défaut
     syncMetaSize();
     return serializeLevel(meta, grid);
 }
 
+// Charge un niveau depuis un texte (import ou chargement en mode édition)
 function loadFromText(text) {
     const { meta: m, grid: g } = parseLevelText(text);
     width = m.width;
@@ -239,13 +262,14 @@ function loadFromText(text) {
     meta = { width, height, start: m.start || { row: 1, col: 1 }, ghosts: { ...m.ghosts } };
     document.getElementById('gridWidth').value = width;
     document.getElementById('gridHeight').value = height;
-    lastValidatedMap = null;
+    lastValidatedMap = null; // La validation n'est plus valide après un chargement
     els.playBtn.disabled = true;
     updateCounters();
     renderGrid();
     setStatus('Level imported.');
 }
 
+// Lance la validation du niveau par le solveur, et joue si playAfter=true
 async function validateAndMaybePlay(playAfter) {
     if (!meta.start) {
         setValidation('<p>Place the knight on the grid first.</p>', false);
@@ -262,8 +286,9 @@ async function validateAndMaybePlay(playAfter) {
     els.validateBtn.disabled = true;
 
     try {
+        // On appelle le solveur C via le pont SolverBridge (avec animation de chargement)
         const result = await window.SolverBridge.verifyLevel(levelText, {
-            requireSafe: hasGhosts,
+            requireSafe: hasGhosts,   // Chemin sûr exigé seulement si il y a des fantômes
             allowFallback: true,
             maxTimeMs: 15000,
         });
@@ -284,6 +309,7 @@ async function validateAndMaybePlay(playAfter) {
             return;
         }
 
+        // Validation réussie : on active les boutons Jouer, Sauvegarder et Soumettre
         const safeNote = result.fallback
             ? '<p class="warn">⚠ Gems-only solution (no 100%-safe path vs ghosts).</p>'
             : '<p class="ok">✓ Level is solvable' + (hasGhosts ? ' while avoiding all ghosts' : '') + ` — ${result.moves.length} optimal moves.</p>`;
@@ -303,12 +329,14 @@ async function validateAndMaybePlay(playAfter) {
     }
 }
 
+// Lance la lecture du niveau validé en passant la carte via sessionStorage
 function launchPlay() {
     if (!lastValidatedMap) return;
     sessionStorage.setItem(STORAGE_KEY, lastValidatedMap);
     window.location.href = 'game.php?mode=custom';
 }
 
+// Soumet le niveau validé à la campagne communautaire
 async function submitLevel() {
     if (!lastValidatedMap || !lastValidatedResult) return;
     const btn = els.submitBtn;
@@ -350,15 +378,16 @@ async function submitLevel() {
     }
 }
 
-// ── Save to My Levels ─────────────────────────────────────────────────────────
+// ── Sauvegarde dans "Mes Niveaux" ──────────────────────────────────────────────
 
 async function saveLevel() {
     if (!lastValidatedMap || !lastValidatedResult) return;
 
     const btn = els.saveBtn;
     const defaultName = window.EDIT_LEVEL?.name || '';
+    // On demande un nom à l'utilisateur via une boîte de dialogue native
     const name = prompt('Level name:', defaultName);
-    if (name === null) return; // cancelled
+    if (name === null) return; // L'utilisateur a annulé
 
     btn.disabled = true;
     const origLabel = btn.textContent;
@@ -375,7 +404,7 @@ async function saveLevel() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 csrf_token:    window.CSRF_TOKEN,
-                id:            currentLevelId || undefined,
+                id:            currentLevelId || undefined, // Undefined = nouvel insert, sinon update
                 name:          name.trim() || 'Sans titre',
                 map:           lastValidatedMap,
                 solution:      lastValidatedResult.moves ? lastValidatedResult.moves.join('') : '',
@@ -387,7 +416,7 @@ async function saveLevel() {
 
         if (data.ok) {
             currentLevelId = data.level_id;
-            // Update EDIT_LEVEL so subsequent saves update correctly
+            // On met à jour EDIT_LEVEL pour que les sauvegardes suivantes mettent à jour le même niveau
             if (!window.EDIT_LEVEL) window.EDIT_LEVEL = {};
             window.EDIT_LEVEL.id   = data.level_id;
             window.EDIT_LEVEL.name = name.trim() || 'Sans titre';
@@ -397,6 +426,7 @@ async function saveLevel() {
                 els.saveResult.innerHTML = `<p class="ok">✓ "${name || 'Sans titre'}" saved to <a href="my_levels.php">My Levels</a>.</p>`;
                 els.saveResult.className = 'validation-result ok';
             }
+            // On remet le bouton dans son état normal après 2,5 secondes
             setTimeout(() => {
                 btn.textContent = 'UPDATE MY LEVEL';
                 btn.disabled = false;
@@ -419,12 +449,12 @@ async function saveLevel() {
     }
 }
 
+// Exporte la carte en fichier JSON téléchargeable
 function exportLevel() {
     const text = getLevelText();
     const name = prompt('Level name (for the file):', 'my-level');
     if (name === null) return;
     const payload = {
-        version: 1,
         name: name || 'my-level',
         map: text,
         exportedAt: new Date().toISOString(),
@@ -432,16 +462,19 @@ function exportLevel() {
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
+    // On génère un nom de fichier propre en remplaçant les caractères spéciaux
     a.download = (name || 'my-level').replace(/[^\w\-]+/g, '_') + '.ombrequatre.json';
     a.click();
     URL.revokeObjectURL(a.href);
     setStatus('File exported (.json). Share it with other players.');
 }
 
+// Ouvre le sélecteur de fichier pour importer un niveau
 function importLevel() {
     document.getElementById('importFile').click();
 }
 
+// Initialisation de l'éditeur au chargement de la page
 function init() {
     grid = emptyGrid(width, height);
     meta.start = { row: 1, col: 1 };
@@ -449,6 +482,7 @@ function init() {
     renderGrid();
     updateCounters();
 
+    // Branchement des boutons d'outils
     document.querySelectorAll('.tool-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
@@ -473,30 +507,34 @@ function init() {
     if (els.submitBtn) els.submitBtn.addEventListener('click', submitLevel);
     if (els.saveBtn)   els.saveBtn.addEventListener('click', saveLevel);
 
-    // ── Load existing level when editor is opened with ?id= ──────────────────
+    // Si on est en mode édition (paramètre ?id= dans l'URL), on charge le niveau existant
     if (window.EDIT_LEVEL && window.EDIT_LEVEL.map) {
         currentLevelId = window.EDIT_LEVEL.id || 0;
         loadFromText(window.EDIT_LEVEL.map);
         setStatus('Level loaded — validate to enable saving.');
     }
 
+    // Gestion de l'import par fichier (JSON ou texte brut)
     document.getElementById('importFile').addEventListener('change', async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
         const raw = await file.text();
         try {
             if (file.name.endsWith('.json') || raw.trim().startsWith('{')) {
+                // Fichier JSON : on extrait le champ "map" ou "level"
                 const data = JSON.parse(raw);
                 loadFromText(data.map || data.level || raw);
             } else {
+                // Fichier texte brut : on l'utilise directement
                 loadFromText(raw);
             }
         } catch (err) {
             setStatus('Invalid import: ' + err.message, true);
         }
-        e.target.value = '';
+        e.target.value = ''; // On réinitialise l'input pour permettre un nouvel import
     });
 
+    // Fin de la peinture quand le bouton de souris est relâché
     document.addEventListener('mouseup', () => { isPainting = false; });
 }
 

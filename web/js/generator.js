@@ -1,12 +1,12 @@
 /**
- * Random level generator — C-backed maze generation, solver-verified.
+ * Générateur de labyrinthes aléatoires — génération via le binaire C, vérification par le solveur.
  *
- * Approach: POST to api/generate.php which calls the compiled C generator
- * (solver/generator.exe / solver/generator).  The C binary uses a DFS
- * Recursive Backtracker to produce unique, fully-connected mazes every run.
- * The solver then verifies solvability before the level is shown.
- * allowFallback:true means a gems-only solution is accepted when no ghost-safe
- * path exists — this dramatically improves generation success rate.
+ * Approche : POST vers api/generate.php qui appelle le générateur C compilé
+ * (solver/generator.exe / solver/generator). Le binaire C utilise un DFS
+ * Recursive Backtracker pour produire des labyrinthes uniques et entièrement connectés.
+ * Le solveur vérifie ensuite la résolvabilité avant d'afficher le niveau.
+ * allowFallback:true accepte une solution gemmes-only si aucun chemin sûr n'existe —
+ * ce qui améliore considérablement le taux de succès de génération.
  */
 (() => {
 'use strict';
@@ -14,8 +14,8 @@
 const { serializeLevel, validateLevelStructure, parseLevelText, countGems, countGhostTypes } = window.LevelUtils;
 const STORAGE_KEY = 'ombrequatre_play_map';
 
-// ── JS fallback blueprints (used when C binary is not yet compiled) ──────────
-// Pure wall/floor patterns. '_' = floor, '*' = portal for blue ghost.
+// ── Plans de rechange en JS (utilisés si le binaire C n'est pas encore compilé) ──────────
+// Motifs mur/sol. '_' = sol, '*' = portail pour le fantôme bleu.
 
 const BLUEPRINTS = {
     easy: [
@@ -45,6 +45,7 @@ const BLUEPRINTS = {
 };
 
 function _randInt(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+// Mélange aléatoire en place (Fisher-Yates)
 function _shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -54,12 +55,14 @@ function _shuffle(arr) {
 }
 function _manhattan(a, b) { return Math.abs(a[0]-b[0]) + Math.abs(a[1]-b[1]); }
 
+// Construit un niveau de rechange en JS à partir d'un plan de labyrinthe prédéfini
 function _tryBuildLevelJS(diff) {
     const profile  = PROFILES[diff];
     const bp       = BLUEPRINTS[diff][_randInt(0, BLUEPRINTS[diff].length - 1)];
     const grid     = bp.map(row => row.split(''));
     const h = grid.length, w = grid[0].length;
 
+    // On identifie les cases libres et les portails dans le plan
     const floors = [], portals = [];
     for (let r = 0; r < h; r++)
         for (let c = 0; c < w; c++) {
@@ -67,7 +70,7 @@ function _tryBuildLevelJS(diff) {
             else if (grid[r][c] === '*') portals.push([r, c]);
         }
 
-    const hasBlue = diff === 'impossible';
+    const hasBlue = diff === 'impossible'; // Le fantôme bleu n'existe qu'en mode impossible
     const ghostList = { easy:[], medium:['red'], hard:['red','green'],
                         impossible:['red','green','yellow','blue'] }[diff];
     const nonBlue = ghostList.filter(g => g !== 'blue');
@@ -76,9 +79,10 @@ function _tryBuildLevelJS(diff) {
     if (hasBlue && portals.length < 2) return null;
 
     _shuffle(floors);
-    const [sr, sc] = floors[0];
+    const [sr, sc] = floors[0]; // Le chevalier démarre sur la première case libre mélangée
     const usedKeys = new Set([`${sr},${sc}`]);
 
+    // On place les gemmes sur des cases libres non occupées
     const gemCount = _randInt(
         profile.minGems,
         Math.min(profile.maxGems, floors.length - nonBlue.length - 1)
@@ -95,9 +99,11 @@ function _tryBuildLevelJS(diff) {
     const meta = { width: w, height: h, start: { row: sr, col: sc }, ghosts: {} };
 
     if (hasBlue) {
+        // Le fantôme bleu commence sur un portail aléatoire
         const [pr, pc] = portals[_randInt(0, portals.length - 1)];
         meta.ghosts.blue = { row: pr, col: pc };
     }
+    // On place les fantômes non-bleus le plus loin possible du départ
     const freeFloors = floors
         .filter(([r, c]) => !usedKeys.has(`${r},${c}`))
         .sort((a, b) => _manhattan(b, [sr,sc]) - _manhattan(a, [sr,sc]));
@@ -109,15 +115,15 @@ function _tryBuildLevelJS(diff) {
     return { text, gemCount: placed, ghosts: Object.keys(meta.ghosts).length };
 }
 
-// ── Difficulty profiles ──────────────────────────────────────────────────────
+// ── Profils de difficulté ────────────────────────────────────────────────────
 
 const PROFILES = {
     easy: {
         label: 'EASY',
         minGems: 8,  maxGems: 14,
         minMoves: 1, maxMoves: 60,
-        maxAttempts: 40,
-        timeBudget:  0,
+        maxAttempts: 40,  // Nombre max d'essais avant d'abandonner
+        timeBudget:  0,   // 0 = mode premier-valide (pas de time-based)
         desc: 'No ghosts · 8-14 gems · short path',
     },
     medium: {
@@ -141,28 +147,28 @@ const PROFILES = {
         minGems:  20, maxGems: 28,
         minMoves: 15, maxMoves: 500,
         maxAttempts: 0,
-        timeBudget: 14000,  // 14 s — keeps the hardest solvable level found
+        timeBudget: 14000,  // 14 secondes : on garde le niveau le plus difficile trouvé
         desc: '4 ghosts + portails · 20-28 gemmes · 15 s pour forger le chemin le plus difficile',
     },
 };
 
-let currentDiff = 'medium';
-let lastMap    = null;
-let lastResult = null;
+let currentDiff = 'medium'; // Difficulté sélectionnée par l'utilisateur
+let lastMap    = null;       // Dernière carte générée et validée
+let lastResult = null;       // Résultat du solveur pour cette carte
 
-// ── Level fetch (C binary → JS fallback) ─────────────────────────────────────
+// ── Récupération d'un niveau (binaire C → repli JS) ──────────────────────────
 
-// Set to true once we know the C binary is unavailable, to skip future API calls.
+// On mémorise si le binaire C est indisponible pour éviter des appels réseau inutiles
 let _cGenUnavailable = false;
 
 /**
- * Produces one raw level candidate.
- * Primary:  POST api/generate.php  → compiled C generator (DFS Recursive Backtracker).
- * Fallback: JS blueprint system    → used if C binary is not yet compiled.
- * Returns { text, gemCount, ghosts } or null on failure.
+ * Génère un candidat de niveau.
+ * Priorité : POST api/generate.php → binaire C (DFS Recursive Backtracker).
+ * Repli :    système de plans JS    → si le binaire n'est pas compilé.
+ * Retourne { text, gemCount, ghosts } ou null en cas d'échec.
  */
 async function fetchLevel(diff) {
-    // ── Try C generator via API ──
+    // ── Essai via l'API du générateur C ──
     if (!_cGenUnavailable) {
         try {
             const resp = await fetch('api/generate.php', {
@@ -173,7 +179,7 @@ async function fetchLevel(diff) {
             const data = await resp.json();
 
             if (resp.status === 503 || data.error === 'generator_unavailable') {
-                // Binary not compiled yet — switch permanently to JS fallback
+                // Le binaire n'est pas compilé : on bascule définitivement sur le JS
                 _cGenUnavailable = true;
             } else if (data.ok && data.map) {
                 const { meta, grid } = parseLevelText(data.map);
@@ -182,17 +188,17 @@ async function fetchLevel(diff) {
                 }
             }
         } catch (_) {
-            /* network error — fall through to JS */
+            /* Erreur réseau — on tombe sur le repli JS */
         }
     }
 
-    // ── JS blueprint fallback ──
+    // ── Repli JS avec plans prédéfinis ──
     return _tryBuildLevelJS(diff);
 }
 
-// ── Preview (canvas — same render logic as game.js) ──────────────────────────
+// ── Aperçu (canvas — même logique de rendu que game.js) ───────────────────────
 
-const PREVIEW_CELL = 36; // px per tile  (game uses 40; we scale to 36 for fit)
+const PREVIEW_CELL = 36; // Taille d'une case dans l'aperçu (légèrement plus petit que le jeu)
 
 const GHOST_SPRITE = {
     red:    'img/fantomeRougeImmobile.png',
@@ -201,24 +207,24 @@ const GHOST_SPRITE = {
     blue:   'img/fantomeBleuImmobile.png',
 };
 
-/** Mirrors game._drawWall / game._drawTile onto a preview canvas. */
+/** Dessine une case sur le canvas d'aperçu — miroir de game._drawWall / game._drawTile. */
 function _drawPreviewTile(ctx, g, r, c, rows, cols) {
     const S  = PREVIEW_CELL;
-    const BD = Math.max(2, Math.round(S / 14)); // border depth ≈ 2-3 px
+    const BD = Math.max(2, Math.round(S / 14)); // Épaisseur des bordures de mur
     const x  = c * S, y = r * S;
     const ch = g[r][c];
 
     if (ch === '#') {
-        // Wall — matches game._drawWall
+        // Rendu de mur (identique à game._drawWall mais sans les pixels décoratifs)
         ctx.fillStyle = '#27446B';
         ctx.fillRect(x, y, S, S);
-        ctx.fillStyle = '#3a5f8c';          // highlight top
+        ctx.fillStyle = '#3a5f8c';          // Arrête lumineuse
         ctx.fillRect(x, y, S, BD);
-        ctx.fillRect(x, y, BD, S);          // highlight left
-        ctx.fillStyle = '#162c4a';           // shadow bottom
+        ctx.fillRect(x, y, BD, S);          // Arrête gauche
+        ctx.fillStyle = '#162c4a';           // Ombre basse
         ctx.fillRect(x, y + S - BD, S, BD);
-        ctx.fillRect(x + S - BD, y, BD, S); // shadow right
-        // Gold seam where wall meets a walkable neighbour
+        ctx.fillRect(x + S - BD, y, BD, S); // Ombre droite
+        // Lisière dorée sur les bords face à une case ouverte
         ctx.fillStyle = '#E0B95A';
         if (r > 0      && g[r - 1][c] !== '#') ctx.fillRect(x,         y,         S, 2);
         if (r < rows-1 && g[r + 1][c] !== '#') ctx.fillRect(x,         y + S - 2, S, 2);
@@ -227,7 +233,7 @@ function _drawPreviewTile(ctx, g, r, c, rows, cols) {
         return;
     }
 
-    // Floor base — matches game._drawTile
+    // Fond de case libre
     ctx.fillStyle = '#0a1a3a';
     ctx.fillRect(x, y, S, S);
     ctx.fillStyle = 'rgba(39,68,107,0.35)';
@@ -236,7 +242,7 @@ function _drawPreviewTile(ctx, g, r, c, rows, cols) {
     const cx = x + S / 2, cy = y + S / 2;
 
     if (ch === '.') {
-        // Coin / gem — matches game._drawCoin (static, no time-based wobble)
+        // Pièce dorée (statique, sans animation de rotation)
         const gw = Math.round(S * 0.20);
         const gh = Math.round(S * 0.38);
         ctx.shadowColor = 'rgba(224,185,90,0.65)';
@@ -252,7 +258,7 @@ function _drawPreviewTile(ctx, g, r, c, rows, cols) {
         ctx.fillRect(cx - gw + 2, cy - gh / 2 + 1, 2,           2);
 
     } else if (ch === '*') {
-        // Portal — matches game._drawPortal (static)
+        // Portail (statique, sans animation de pulsation)
         const rad = S * 0.30;
         const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, rad);
         grad.addColorStop(0,   'rgba(91,61,145,0.85)');
@@ -273,6 +279,7 @@ function _drawPreviewTile(ctx, g, r, c, rows, cols) {
     }
 }
 
+// Génère et affiche le canvas d'aperçu du niveau dans la div #genPreview
 function renderPreview(text) {
     const el = document.getElementById('genPreview');
     const { meta: m, grid: g } = parseLevelText(text);
@@ -287,16 +294,16 @@ function renderPreview(text) {
 
     const ctx = canvas.getContext('2d');
 
-    // Background (same as game: #001440)
+    // Fond (identique au jeu)
     ctx.fillStyle = '#001440';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Pass 1 — draw all tiles (synchronous)
+    // Passe 1 : dessin synchrone de toutes les cases
     for (let r = 0; r < rows; r++)
         for (let c = 0; c < cols; c++)
             _drawPreviewTile(ctx, g, r, c, rows, cols);
 
-    // Pass 2 — overlay sprites (async, drawn when images load)
+    // Passe 2 : superposition des sprites (asynchrone, car les images se chargent)
     const pad = Math.round(S * 0.05);
     function blitSprite(src, col, row) {
         const img = new Image();
@@ -315,7 +322,7 @@ function renderPreview(text) {
     el.appendChild(wrap);
 }
 
-// ── Status ───────────────────────────────────────────────────────────────────
+// ── Statut ────────────────────────────────────────────────────────────────────
 
 function setStatus(msg, err) {
     const el = document.getElementById('genStatus');
@@ -323,8 +330,9 @@ function setStatus(msg, err) {
     el.className = 'editor-status' + (err ? ' err' : (msg ? ' ok' : ''));
 }
 
-// ── Generate ─────────────────────────────────────────────────────────────────
+// ── Génération ───────────────────────────────────────────────────────────────
 
+// Réinitialise l'UI avant une nouvelle génération
 function _resetGeneratorUI(btn, playBtn) {
     btn.disabled = true;
     playBtn.disabled = true;
@@ -335,6 +343,7 @@ function _resetGeneratorUI(btn, playBtn) {
     if (sr) { sr.textContent = ''; sr.className = 'validation-result'; }
 }
 
+// Met à jour l'UI après une génération réussie
 function _finishGeneration(candidate, result, profile, attempt, btn, playBtn, label) {
     lastMap    = candidate.text;
     lastResult = result;
@@ -349,6 +358,7 @@ function _finishGeneration(candidate, result, profile, attempt, btn, playBtn, la
     btn.disabled = false;
 }
 
+// Fonction principale de génération
 async function generate() {
     const diff    = currentDiff;
     const profile = PROFILES[diff];
@@ -364,15 +374,15 @@ async function generate() {
             : profile.label + ' — generating maze…'
     );
 
-    await new Promise(r => setTimeout(r, 40));
+    await new Promise(r => setTimeout(r, 40)); // Petite pause pour que l'UI se mette à jour
 
-    // ── IMPOSSIBLE: time-based best-of ──────────────────────────────────────
+    // ── Mode IMPOSSIBLE : on garde le niveau le plus difficile pendant le budget de temps ──
     if (profile.timeBudget) {
         const deadline = Date.now() + profile.timeBudget;
         let best     = null;
         let attempts = 0;
 
-        // Inject a live-info element inside the parade overlay
+        // On injecte un élément d'info en direct dans l'overlay de parade
         const overlayEl = document.getElementById('solverOverlay');
         const parade    = overlayEl.querySelector('.solver-parade');
         let   infoEl    = null;
@@ -390,6 +400,7 @@ async function generate() {
             const candidate = await fetchLevel(diff);
             if (!candidate) continue;
 
+            // Mise à jour du compteur d'essais en temps réel
             if (infoEl) {
                 const tLeft = Math.max(0, deadline - Date.now());
                 infoEl.textContent = 'Attempt ' + attempts +
@@ -407,11 +418,11 @@ async function generate() {
                 const moves = result.moves.length;
                 if (moves < profile.minMoves) continue;
 
-                // Keep only the hardest solvable level (most optimal moves)
+                // On garde le niveau avec le plus grand nombre de mouvements optimaux
                 if (!best || moves > best.result.moves.length) {
                     best = { candidate, result };
                 }
-            } catch (_) { /* solver timeout or error — try again */ }
+            } catch (_) { /* Timeout ou erreur du solveur — on réessaie */ }
         }
 
         hideParade();
@@ -429,11 +440,12 @@ async function generate() {
         return;
     }
 
-    // ── Normal: first-valid attempt-based ───────────────────────────────────
+    // ── Mode normal : on prend le premier niveau valide ──────────────────────
     for (let attempt = 1; attempt <= profile.maxAttempts; attempt++) {
         const candidate = await fetchLevel(diff);
         if (!candidate) continue;
 
+        // Mise à jour du compteur dans l'overlay de parade
         const progressEl = document.querySelector('#paradeProgress');
         if (progressEl) progressEl.textContent = 'Attempt ' + attempt + ' / ' + profile.maxAttempts;
 
@@ -445,12 +457,13 @@ async function generate() {
 
             if (!result.found) continue;
             const moves = result.moves.length;
+            // On vérifie que le nombre de mouvements est dans la plage attendue pour cette difficulté
             if (moves < profile.minMoves || moves > profile.maxMoves) continue;
 
             hideParade();
             _finishGeneration(candidate, result, profile, 'attempt ' + attempt, btn, playBtn);
             return;
-        } catch (_) { /* retry */ }
+        } catch (_) { /* On réessaie au prochain tour de boucle */ }
     }
 
     hideParade();
@@ -458,21 +471,22 @@ async function generate() {
     btn.disabled = false;
 }
 
-// ── Play ─────────────────────────────────────────────────────────────────────
+// ── Lecture ───────────────────────────────────────────────────────────────────
 
+// Lance la lecture du niveau généré via sessionStorage
 function play() {
     if (!lastMap) return;
     sessionStorage.setItem(STORAGE_KEY, lastMap);
     window.location.href = 'game.php?mode=generated';
 }
 
-// ── Save generated level to My Levels ────────────────────────────────────────
+// ── Sauvegarde du niveau généré dans "Mes Niveaux" ────────────────────────────
 
 async function saveGenLevel() {
     if (!lastMap || !lastResult) return;
 
     const name = prompt('Name for this level:', PROFILES[currentDiff].label + ' Random');
-    if (name === null) return; // cancelled
+    if (name === null) return; // Annulé par l'utilisateur
 
     const btn = document.getElementById('saveGenBtn');
     const resultEl = document.getElementById('genSaveResult');
@@ -519,19 +533,22 @@ async function saveGenLevel() {
     }
 }
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── Initialisation ───────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('generateBtn').addEventListener('click', generate);
     document.getElementById('playBtn').addEventListener('click', play);
     document.getElementById('saveGenBtn').addEventListener('click', saveGenLevel);
 
+    // Branchement des boutons de sélection de difficulté
     document.querySelectorAll('.diff-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentDiff = btn.dataset.diff;
+            // On met à jour la description de la difficulté sélectionnée
             document.getElementById('diffDesc').textContent = PROFILES[currentDiff].desc;
+            // On réinitialise l'état de la génération précédente
             lastMap    = null;
             lastResult = null;
             document.getElementById('playBtn').disabled = true;
@@ -541,6 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Description initiale de la difficulté par défaut (medium)
     document.getElementById('diffDesc').textContent = PROFILES[currentDiff].desc;
     setStatus('Choose a difficulty then click "Generate".');
 });

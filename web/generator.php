@@ -1,4 +1,5 @@
 <?php
+// Page du générateur de labyrinthes aléatoires vérifiés par le solveur C.
 require_once __DIR__ . '/includes/auth.php';
 requireLogin();
 ?>
@@ -9,7 +10,7 @@ requireLogin();
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Random Mazes — Les fantômes d'Ombrequatre</title>
 <link rel="icon" type="image/png" href="img/logo.png">
-<link rel="stylesheet" href="css/style.css?v=8">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body class="generator-body">
 <div class="vignette"></div>
@@ -22,37 +23,44 @@ requireLogin();
 <main class="generator-main panel">
     <section class="generator-intro">
         <h2>RANDOM LEVEL</h2>
+        <!-- Le solveur C vérifie la résolvabilité du niveau avant de proposer la partie -->
         <p>Choose a difficulty — the solver checks every generated level
            in under <strong>15 seconds</strong> before you can play.</p>
     </section>
 
+    <!-- Sélecteur de difficulté : Facile / Moyen / Difficile / Impossible -->
     <div class="diff-selector">
         <button type="button" class="menu-btn diff-btn" data-diff="easy">EASY</button>
         <button type="button" class="menu-btn diff-btn active" data-diff="medium">MEDIUM</button>
         <button type="button" class="menu-btn diff-btn" data-diff="hard">HARD</button>
         <button type="button" class="menu-btn diff-btn diff-btn--impossible" data-diff="impossible">IMPOSSIBLE</button>
     </div>
+    <!-- Description de la difficulté sélectionnée, mise à jour par JavaScript -->
     <p id="diffDesc" class="editor-hint center"></p>
 
+    <!-- Boutons d'action : générer, jouer, sauvegarder -->
     <div class="generator-actions">
         <button type="button" class="menu-btn primary" id="generateBtn">GENERATE A MAZE</button>
         <button type="button" class="menu-btn" id="playBtn" disabled>PLAY THIS LEVEL</button>
         <button type="button" class="menu-btn" id="saveGenBtn" disabled>SAVE TO MY LEVELS</button>
     </div>
 
+    <!-- Aperçu canvas du niveau généré (affiché après génération) -->
     <div id="genPreview" class="gen-preview"></div>
     <div id="genStatus" class="editor-status"></div>
     <div id="genSaveResult" class="validation-result" style="margin-top:10px"></div>
 </main>
 
+<!-- Overlay avec l'animation de chargement du solveur -->
 <div id="solverOverlay" class="solver-overlay" hidden></div>
 
 <script>
+// Token CSRF nécessaire pour les appels API (génération et sauvegarde)
 window.CSRF_TOKEN = <?= json_encode(\csrfToken()) ?>;
 </script>
-<script src="js/level-utils.js?v=8"></script>
-<script src="js/game.js?v=10"></script>
-<script src="js/solver-bridge.js?v=8"></script>
-<script src="js/generator.js?v=9"></script>
+<script src="js/level-utils.js"></script>
+<script src="js/game.js"></script>
+<script src="js/solver-bridge.js"></script>
+<script src="js/generator.js"></script>
 </body>
 </html>

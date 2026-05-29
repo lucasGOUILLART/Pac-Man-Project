@@ -1,4 +1,5 @@
 <?php
+// Page d'options : statistiques du joueur et changement de pseudo.
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/db.php';
 
@@ -7,7 +8,7 @@ requireLogin();
 $pdo    = getDB();
 $userId = currentUserId();
 
-// Stats
+// On récupère les stats complètes du joueur pour les afficher
 $stmt = $pdo->prepare('
     SELECT u.pseudo, u.niveau_actuel, u.score_total,
         (SELECT COALESCE(MAX(score_niveau), 0) FROM in_game WHERE id_joueur = u.id) AS best_score,
@@ -17,30 +18,34 @@ $stmt = $pdo->prepare('
 $stmt->execute([$userId]);
 $user = $stmt->fetch();
 
-// User no longer exists in DB. Force logout.
+// Si l'utilisateur a disparu de la base, on le déconnecte
 if (!$user) {
     header('Location: logout.php');
     exit;
 }
 
-// Handle pseudo change
+// Traitement du formulaire de changement de pseudo
 $flash = null;
 $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['new_pseudo'])) {
+    // Vérification du token CSRF avant de traiter la demande
     if (!csrfCheck($_POST['csrf_token'] ?? null)) {
         $errors[] = 'Invalid security token.';
     } else {
         $newPseudo = trim($_POST['new_pseudo']);
+        // Validation : le pseudo doit faire entre 3 et 30 caractères alphanumériques
         if (strlen($newPseudo) < 3 || strlen($newPseudo) > 30) {
             $errors[] = 'Pseudo must be 3-30 characters.';
         } elseif (!preg_match('/^[a-zA-Z0-9_-]+$/', $newPseudo)) {
             $errors[] = 'Pseudo can only contain letters, numbers, _ and -.';
         } else {
+            // On vérifie que ce pseudo n'est pas déjà pris par quelqu'un d'autre
             $stmt = $pdo->prepare('SELECT id FROM utisateur WHERE pseudo = ? AND id != ?');
             $stmt->execute([$newPseudo, $userId]);
             if ($stmt->fetch()) {
                 $errors[] = 'This pseudo is already taken.';
             } else {
+                // Mise à jour en base et dans la session
                 $pdo->prepare('UPDATE utisateur SET pseudo = ? WHERE id = ?')
                     ->execute([$newPseudo, $userId]);
                 $_SESSION['pseudo'] = $newPseudo;
@@ -69,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['new_pseudo'])) {
 </header>
 
 <main class="options-shell">
+    <!-- Première rangée de statistiques : meilleur score et total de pièces -->
     <div class="opt-row">
         <div class="opt-stat panel">
             <span class="opt-label">BEST SCORE</span>
@@ -80,6 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['new_pseudo'])) {
         </div>
     </div>
 
+    <!-- Deuxième rangée : meilleur niveau atteint et score total -->
     <div class="opt-row">
         <div class="opt-stat panel">
             <span class="opt-label">BEST LEVEL</span>
@@ -91,6 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['new_pseudo'])) {
         </div>
     </div>
 
+    <!-- Section de changement de pseudo avec avatar du chevalier -->
     <section class="opt-pseudo panel">
         <div class="opt-avatar">
             <img src="img/chevalier1.png" alt="">
@@ -98,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['new_pseudo'])) {
         <div class="opt-pseudo-form">
             <h3>CHANGE PSEUDO</h3>
             <p class="muted-small">Currently <strong><?= e($user['pseudo']) ?></strong></p>
+            <!-- Affichage des erreurs ou du message de succès -->
             <?php if (!empty($errors)): ?>
                 <div class="alert">
                     <?php foreach ($errors as $err): ?><div><?= e($err) ?></div><?php endforeach; ?>

@@ -1,6 +1,6 @@
 /* =========================================================
-   Les fantômes d'Ombrequatre — Stylesheet (v2)
-   Pixel-art arcade theme — palette officielle du brief :
+   Les fantômes d'Ombrequatre — Feuille de styles
+   Thème arcade pixel-art — palette officielle du brief :
 
      OR CLAIR          #E0B95A
      OR FONCE          #8B603F
@@ -12,8 +12,10 @@
      VIOLET OMBRE      #5B3D91
    ========================================================= */
 
+/* Police pixel-art pour les titres, police monospace pour le texte courant */
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 
+/* Variables CSS pour la palette de couleurs — on centralise ici pour éviter la répétition */
 :root {
     --gold:        #E0B95A;
     --gold-dark:   #8B603F;
@@ -31,6 +33,7 @@
     --paper-dim:   #c9b88a;
 }
 
+/* Réinitialisation universelle des marges et paddings */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
@@ -41,10 +44,12 @@ html, body {
     font-size: 19px;
     line-height: 1.35;
     overflow-x: hidden;
+    /* Rendu pixel-art : pas d'antialiasing sur les images */
     image-rendering: pixelated;
     image-rendering: crisp-edges;
 }
 
+/* Dégradé de fond avec touches de couleur violet et cyan pour l'ambiance */
 body {
     background:
         radial-gradient(ellipse at 30% 0%, rgba(91, 61, 145, 0.35) 0%, transparent 55%),
@@ -54,7 +59,7 @@ body {
     background-size: 100% 100%;
 }
 
-/* CRT scanlines overlay */
+/* Effet scanlines CRT : lignes horizontales semi-transparentes superposées */
 body::before {
     content: '';
     position: fixed;
@@ -73,9 +78,10 @@ body::before {
 a { color: var(--gold); text-decoration: none; }
 a:hover { color: var(--gold-bright); }
 
+/* Rendu pixelisé pour toutes les images (sprites du jeu) */
 img { image-rendering: pixelated; image-rendering: crisp-edges; }
 
-/* Headings use arcade pixel font */
+/* Titres en police arcade pixel */
 h1, h2, h3, .title, .arcade {
     font-family: 'Press Start 2P', monospace;
     letter-spacing: 0.04em;
@@ -86,7 +92,8 @@ h1, h2, h3, .title, .arcade {
 button, .btn { font-family: 'Press Start 2P', monospace; }
 
 /* =====================================================
-   PIXEL FRAME / PANEL
+   CADRE PIXEL / PANNEAU
+   Bordure dorée avec effet de profondeur multicouche
    ===================================================== */
 
 .panel,
@@ -108,7 +115,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 /* =====================================================
-   AUTH PAGE
+   PAGE D'AUTHENTIFICATION (index.php)
    ===================================================== */
 
 .auth-body {
@@ -130,6 +137,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 
 .auth-header { text-align: center; width: 100%; }
 
+/* Logo flottant avec animation douce de balancement */
 .auth-header .logo {
     width: 200px; height: 200px;
     object-fit: contain;
@@ -155,6 +163,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     margin-bottom: 4px;
 }
 
+/* Onglets de bascule connexion/inscription */
 .tabs {
     display: flex;
     gap: 0;
@@ -182,6 +191,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 
 .auth-form { display: flex; flex-direction: column; gap: 14px; }
 
+/* Champs de formulaire */
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field span {
     color: var(--gold);
@@ -205,6 +215,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     box-shadow: 0 0 0 2px rgba(224, 185, 90, 0.25);
 }
 
+/* Bouton de soumission principal avec effet de pression */
 .submit-btn {
     margin-top: 8px;
     padding: 14px;
@@ -224,6 +235,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     box-shadow: 0 0 0 var(--gold-dark);
 }
 
+/* Boîte d'alerte pour les erreurs */
 .alert {
     background: rgba(255, 59, 59, 0.18);
     border: 2px solid var(--red);
@@ -259,7 +271,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 /* =====================================================
-   TOPBAR (shared)
+   BARRE DE NAVIGATION (partagée)
    ===================================================== */
 
 .topbar {
@@ -301,6 +313,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     letter-spacing: 0.06em;
 }
 
+/* Boutons de navigation avec effet de pression (ombre portée) */
 .logout-btn, .nav-btn {
     background: var(--night-deep);
     border: 2px solid var(--gold);
@@ -321,7 +334,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 /* =====================================================
-   DASHBOARD
+   TABLEAU DE BORD (dashboard.php)
    ===================================================== */
 
 .dashboard-body { padding-bottom: 60px; }
@@ -339,12 +352,14 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .hero-card p { color: var(--paper); font-size: 19px; line-height: 1.5; }
 .hero-card .cyan { color: var(--cyan); }
 
+/* Grille responsive des cartes de niveaux */
 .levels-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 22px;
 }
 
+/* Carte individuelle de niveau avec effet de survol */
 .level-card {
     padding: 20px;
     transition: transform 0.12s, box-shadow 0.12s;
@@ -378,12 +393,14 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 .level-stars { margin-bottom: 12px; }
+/* Étoile inactive (grisée) */
 .star {
     color: rgba(224, 185, 90, 0.2);
     font-size: 17px;
     margin-right: 2px;
     text-shadow: 1px 1px 0 var(--night-deep);
 }
+/* Étoile active (dorée) */
 .star.on { color: var(--gold); }
 
 .level-meta {
@@ -395,6 +412,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .level-meta div { margin: 3px 0; }
 .level-meta strong { color: var(--paper); font-weight: normal; }
 
+/* Bouton d'action de la carte (ENTRER, REJOUER, VERROUILLÉ) */
 .level-action {
     display: block;
     text-align: center;
@@ -412,6 +430,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .level-action:hover { background: var(--gold-bright); color: var(--night-deep); }
 .level-action:active { transform: translateY(3px); box-shadow: 0 0 0 var(--gold-dark); }
 
+/* Style spécial pour le bouton VERROUILLÉ */
 .level-action.locked-tag {
     background: var(--night-deep);
     color: var(--paper-dim);
@@ -421,7 +440,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 /* =====================================================
-   GAME PAGE
+   PAGE DE JEU (game.php)
    ===================================================== */
 
 .game-shell {
@@ -477,6 +496,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     display: block;
 }
 
+/* Icônes de vie (petits sprites du chevalier) */
 #lives {
     display: inline-flex;
     gap: 3px;
@@ -492,6 +512,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     image-rendering: pixelated;
 }
 
+/* Indicateur du mode courant (STEALTH / COMBAT / CHRONOS) */
 .mode-display {
     background: var(--night-deep);
     border: 2px solid var(--gold-dark);
@@ -513,19 +534,21 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     color: var(--gold);
     letter-spacing: 0.06em;
 }
+/* Couleurs thématiques selon le mode actif */
 .mode-display.combat          { border-color: var(--red); }
 .mode-display.combat .mode-value { color: var(--red); }
 .mode-display.chronos-ghost   { border-color: var(--cyan); }
 .mode-display.chronos-ghost .mode-value { color: var(--cyan); }
 .mode-display.chronos-player  { border-color: var(--purple); }
 .mode-display.chronos-player .mode-value { color: var(--purple); animation: shake 0.4s infinite; }
+/* Animation de tremblement pour le mode gel du joueur */
 @keyframes shake {
     0%, 100% { transform: translateX(0); }
     25%      { transform: translateX(-1px); }
     75%      { transform: translateX(1px); }
 }
 
-/* Direction pad */
+/* Pavé directionnel (flèches) */
 .dirs {
     display: flex;
     flex-direction: column;
@@ -550,6 +573,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     color: var(--gold);
     border-color: var(--gold);
 }
+/* Bouton de direction disponible : pulsation dorée */
 .dir-btn.available {
     color: var(--gold);
     border-color: var(--gold);
@@ -561,6 +585,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     transform: translateY(3px);
     box-shadow: 0 0 0 var(--stone-dark);
 }
+/* Bouton central décoratif (non cliquable) */
 .dir-btn.dir-center {
     color: var(--gold-dark);
     background: var(--night-deep);
@@ -585,6 +610,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 .hint strong { color: var(--gold); }
 
+/* Légende des objets collectibles */
 .legend {
     font-size: 17px;
     color: var(--paper-dim);
@@ -604,7 +630,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .legend .dot.watch  { background: var(--purple); }
 .legend .dot.portal { background: var(--purple); border: 1px solid var(--cyan); }
 
-/* Canvas */
+/* Zone du canvas de jeu */
 .game-canvas-wrap {
     position: relative;
     display: flex;
@@ -612,6 +638,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     align-items: flex-start;
 }
 
+/* Canvas principal : bordure dorée et halo cyan subtil */
 #canvas {
     display: block;
     background: var(--night);
@@ -626,6 +653,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     image-rendering: crisp-edges;
 }
 
+/* Overlay de fin de partie (victoire / game over) */
 .game-overlay {
     position: absolute;
     inset: 4px;
@@ -644,6 +672,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     letter-spacing: 0.08em;
     text-shadow: 4px 4px 0 var(--night-deep);
 }
+/* Titre clignotant en or à la victoire */
 .game-overlay h2.victory {
     color: var(--gold);
     animation: victory-blink 0.7s ease-in-out infinite;
@@ -694,7 +723,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     box-shadow: 0 0 0 var(--gold-dark);
 }
 
-/* Lore panel */
+/* Panneau de lore (histoire du jeu) */
 .lore-panel h3 {
     font-family: 'Press Start 2P', monospace;
     font-size: 11px;
@@ -711,6 +740,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .lore-panel em { color: var(--cyan); font-style: italic; }
 .lore-panel strong { color: var(--red); font-weight: normal; }
 
+/* Liste des gardiens dans le panneau de lore */
 .wardens { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .wardens li {
     font-size: 16px;
@@ -733,7 +763,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .warden-name.blue   { color: var(--cyan); }
 
 /* =====================================================
-   PAGE TOPBAR (used by Bestiary, Options, Dashboard)
+   BARRE DE TITRE DE PAGE (Bestiaire, Options, Dashboard)
    ===================================================== */
 
 .page-topbar {
@@ -754,6 +784,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     text-shadow: 3px 3px 0 var(--night-deep);
     margin: 0 auto 0 0;
 }
+/* Bouton de navigation sombre (utilisé dans le HUD de jeu) */
 .nav-btn-dark {
     background: #1a1a1a;
     border-color: #555;
@@ -763,11 +794,12 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .nav-btn-dark:hover { color: var(--gold-bright); }
 
 /* =====================================================
-   MAIN MENU (menu.php)
+   MENU PRINCIPAL (menu.php)
    ===================================================== */
 
 .menu-body { padding-bottom: 40px; }
 
+/* Grille 3 colonnes : stats gauche | centre | stats droite */
 .menu-shell {
     position: relative;
     z-index: 2;
@@ -802,6 +834,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     letter-spacing: 0.16em;
 }
 
+/* Trois colonnes (lore | boutons | galerie) */
 .menu-columns {
     grid-column: 1 / -1; grid-row: 3;
     display: grid;
@@ -813,6 +846,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     .menu-columns { grid-template-columns: 1fr; }
 }
 
+/* Pastille de statistique (meilleur score, meilleur niveau) */
 .stat-pill {
     background: var(--night-deep);
     border: 2px solid var(--gold);
@@ -859,6 +893,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     align-items: center;
     gap: 18px;
 }
+/* Logo avec animation de flottement (même que la page d'accueil) */
 .menu-logo {
     width: 200px; height: 200px;
     object-fit: contain;
@@ -874,6 +909,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     width: 100%;
     max-width: 280px;
 }
+/* Bouton de menu standard */
 .menu-btn {
     display: flex;
     align-items: center;
@@ -899,6 +935,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     transform: translateY(4px);
     box-shadow: 0 0 0 #000;
 }
+/* Variante primaire (or plein) — pour les actions principales */
 .menu-btn.primary {
     background: var(--gold);
     border-color: var(--gold-dark);
@@ -908,10 +945,12 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 .menu-btn.primary:hover { background: var(--gold-bright); color: var(--night-deep); border-color: var(--gold-dark); }
 .menu-btn.primary:active { box-shadow: 0 0 0 var(--gold-dark); }
+/* Variante quitter (bordure rouge) */
 .menu-btn.quit { border-color: #882222; }
 .menu-btn.quit:hover { color: var(--red); border-color: var(--red); }
 .menu-btn .btn-icon { font-size: 10px; }
 
+/* Galerie de fantômes dans le panneau droit du menu */
 .menu-gallery { padding: 20px; }
 .menu-gallery h2 {
     font-family: 'Press Start 2P', monospace;
@@ -945,17 +984,19 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     font-size: 8px;
     letter-spacing: 0.1em;
 }
+/* Couleurs spécifiques par fantôme */
 .gallery-cell.red span    { color: var(--red); }
 .gallery-cell.green span  { color: var(--green); }
 .gallery-cell.blue span   { color: var(--cyan); }
 .gallery-cell.yellow span { color: var(--gold); }
 
 /* =====================================================
-   BESTIARY (bestiaire.php)
+   BESTIAIRE (bestiaire.php)
    ===================================================== */
 
 .bestiary-body { padding-bottom: 50px; }
 
+/* Disposition 3 colonnes : portrait | grille de sélection | description */
 .bestiary-shell {
     position: relative;
     z-index: 2;
@@ -973,6 +1014,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 
 .best-left, .best-right, .best-grid { padding: 24px; }
 
+/* Grand portrait du fantôme sélectionné */
 .best-portrait {
     background: var(--night-deep);
     border: 3px solid var(--gold-dark);
@@ -990,6 +1032,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     filter: drop-shadow(0 4px 0 rgba(0,0,0,0.6));
 }
 
+/* Nom du fantôme en couleur thématique */
 .best-tale h3 {
     font-family: 'Press Start 2P', monospace;
     font-size: 12px;
@@ -1006,6 +1049,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     line-height: 1.5;
 }
 
+/* Grille 2×2 pour les 4 fantômes cliquables */
 .best-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1030,7 +1074,8 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     image-rendering: pixelated;
     transition: transform 0.15s;
 }
-.best-cell:hover img { transform: scale(1.05); }
+.best-cell:hover img { transform: scale(1.05); } /* Léger zoom au survol */
+/* Cellule active : halo doré */
 .best-cell.active {
     border-color: var(--gold);
     box-shadow: 0 0 0 2px var(--night-deep), 0 0 22px rgba(224, 185, 90, 0.4);
@@ -1060,6 +1105,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     line-height: 1.5;
 }
 
+/* Barre de niveau de menace du fantôme */
 .threat-bar {
     width: 100%;
     height: 18px;
@@ -1094,6 +1140,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     gap: 22px;
 }
 
+/* Lignes de statistiques en grille 2 colonnes */
 .opt-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1120,6 +1167,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     letter-spacing: 0.06em;
 }
 
+/* Section changement de pseudo avec avatar + formulaire */
 .opt-pseudo {
     padding: 26px 28px;
     display: grid;
@@ -1175,6 +1223,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     box-shadow: 0 0 0 2px rgba(224, 185, 90, 0.2);
 }
 
+/* Variante succès de la boîte d'alerte */
 .alert.success {
     background: rgba(59, 255, 102, 0.15);
     border-color: var(--green);
@@ -1182,7 +1231,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 /* =====================================================
-   GAME HUD (game.php — Image 3 layout)
+   HUD DU JEU (game.php)
    ===================================================== */
 
 .game-body {
@@ -1191,6 +1240,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     min-height: 100vh;
 }
 
+/* Barre de statistiques en haut du jeu */
 .game-hud {
     position: relative;
     z-index: 2;
@@ -1212,6 +1262,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     display: flex;
     gap: 10px;
 }
+/* Case de statistique individuelle (SCORE, LEVEL, GEMS, etc.) */
 .hud-stat {
     background: var(--night-deep);
     border: 2px solid var(--gold-dark);
@@ -1235,6 +1286,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     letter-spacing: 0.06em;
 }
 
+/* Bandeau de mode sous le HUD */
 .mode-banner {
     position: relative;
     z-index: 2;
@@ -1266,6 +1318,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     letter-spacing: 0.08em;
 }
 
+/* Bandeau d'indice (mis en surbrillance quand le solveur suggère un coup) */
 .hint-banner {
     position: relative;
     z-index: 2;
@@ -1297,6 +1350,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     50%      { box-shadow: 0 0 18px rgba(102, 230, 255, 0.5); }
 }
 
+/* Bouton directionnel mis en surbrillance par l'indice du solveur */
 .dir-btn.suggested {
     background: rgba(102, 230, 255, 0.2);
     border-color: var(--cyan);
@@ -1334,7 +1388,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .ctrl-hint strong { color: var(--gold); font-weight: normal; }
 
 /* =====================================================
-   PRE-GAME MODAL
+   MODAL PRÉ-JEU (basculement power-ups avant le départ)
    ===================================================== */
 
 .pre-game-modal {
@@ -1388,7 +1442,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 .pre-tale em { color: var(--cyan); font-style: italic; }
 
-/* Toggle switch */
+/* Interrupteur ON/OFF pour les power-ups */
 .toggle-row {
     display: flex;
     align-items: center;
@@ -1403,7 +1457,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 .toggle-row:hover { border-color: var(--gold); }
 
-.toggle-row input { display: none; }
+.toggle-row input { display: none; } /* On cache l'input natif */
 
 .toggle-switch {
     flex-shrink: 0;
@@ -1424,6 +1478,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     background: var(--paper-dim);
     transition: transform 0.2s, background 0.2s;
 }
+/* État activé : fond doré, curseur glissé à droite */
 .toggle-row input:checked + .toggle-switch {
     background: var(--gold);
     border-color: var(--gold-bright);
@@ -1467,14 +1522,14 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .pre-back:hover { color: var(--gold-bright); }
 
 /* =====================================================
-   GAME MAIN LAYOUT (canvas + solution panel)
+   DISPOSITION JEU + PANNEAU DE SOLUTION
    ===================================================== */
 
 .game-main {
     position: relative;
     z-index: 2;
     display: grid;
-    grid-template-columns: 1fr 280px;
+    grid-template-columns: 1fr 280px; /* Canvas à gauche, solution à droite */
     gap: 22px;
     max-width: 1180px;
     margin: 8px auto 16px;
@@ -1482,6 +1537,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     align-items: start;
     justify-content: center;
 }
+/* En mode "solutions cachées", on affiche seulement le canvas centré */
 .game-main.solutions-hidden {
     grid-template-columns: 1fr;
 }
@@ -1492,14 +1548,14 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     .game-main { grid-template-columns: 1fr; }
 }
 
-/* Override the old centering for canvas */
+/* On surcharge l'ancien centrage du canvas */
 .game-canvas-wrap {
     margin: 0 !important;
     justify-self: center;
 }
 
 /* =====================================================
-   SOLUTION PANEL
+   PANNEAU DE SOLUTION
    ===================================================== */
 
 .solution-panel {
@@ -1550,6 +1606,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .sol-note em { color: var(--red); font-style: normal; }
 .sol-note.warn { color: var(--red); }
 
+/* Liste des mouvements de la solution */
 .sol-list {
     list-style: none;
     margin: 0;
@@ -1572,12 +1629,14 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     letter-spacing: 0.04em;
     transition: all 0.2s;
 }
+/* Mouvement déjà joué : barré et grisé */
 .sol-list li.done {
     opacity: 0.4;
     border-left-color: var(--gold-dark);
     color: var(--paper-dim);
     text-decoration: line-through;
 }
+/* Prochain mouvement à jouer : en surbrillance avec animation */
 .sol-list li.next {
     border-left-color: var(--gold);
     background: rgba(224, 185, 90, 0.15);
@@ -1613,6 +1672,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     font-style: italic;
 }
 
+/* Bannière d'avertissement quand le joueur dévie de la solution optimale */
 .sol-divergence {
     background: rgba(255, 59, 59, 0.15);
     border: 2px solid var(--red);
@@ -1626,16 +1686,17 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     line-height: 1.5;
 }
 
-/* No-powers mode banner */
+/* Mode sans power-ups */
 .mode-banner.no-powers       { border-color: var(--paper-dim); }
 .mode-banner.no-powers .mode-value { color: var(--paper-dim); }
 
 /* =====================================================
-   HUD flag (POWER-UPS ON/OFF indicator)
+   INDICATEUR POWER-UPS ON/OFF dans le HUD
    ===================================================== */
 .hud-stat.hud-flag {
     border-width: 2px;
 }
+/* ON : bordure et texte cyan */
 .hud-stat.hud-flag.on {
     border-color: var(--cyan);
 }
@@ -1643,6 +1704,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     color: var(--cyan);
     text-shadow: 0 0 8px rgba(102, 230, 255, 0.5);
 }
+/* OFF : grisé */
 .hud-stat.hud-flag.off {
     border-color: var(--paper-dim);
     opacity: 0.7;
@@ -1652,7 +1714,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 /* =====================================================
-   Solver — progress, source, safety badges
+   Solveur — badges de progression, source, sécurité
    ===================================================== */
 .sol-progress {
     font-family: 'VT323', monospace;
@@ -1668,6 +1730,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     50%      { opacity: 1.0; }
 }
 
+/* Badge "Live solver" discret */
 .sol-source {
     display: inline-block;
     font-family: 'Press Start 2P', monospace;
@@ -1680,6 +1743,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     color: var(--paper-dim);
 }
 
+/* Badge sécurité : vert si chemin sûr, rouge si gemmes-only */
 .sol-note.safe {
     background: rgba(59, 255, 102, 0.12);
     border-color: var(--green);
@@ -1692,7 +1756,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 /* =====================================================
-   Main menu — Mode toggle (Power-ups ON/OFF)
+   Bouton de bascule mode (Power-ups ON/OFF) dans le menu
    ===================================================== */
 
 .menu-mode-form {
@@ -1740,13 +1804,14 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     margin-top: 2px;
 }
 
+/* Couleurs selon l'état actuel du mode */
 .mode-toggle.on  .mode-toggle-value { color: var(--cyan);  }
 .mode-toggle.off .mode-toggle-value { color: var(--paper-dim); }
 .mode-toggle.on  { border-color: var(--cyan); box-shadow: 0 4px 0 #155F7A; }
 .mode-toggle.on:active { box-shadow: 0 0 0 #155F7A; }
 
 /* =====================================================
-   LEVEL EDITOR & GENERATOR
+   ÉDITEUR DE NIVEAUX & GÉNÉRATEUR
    ===================================================== */
 
 .editor-body,
@@ -1754,6 +1819,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     min-height: 100vh;
 }
 
+/* Disposition 3 colonnes : outils | canvas | actions */
 .editor-layout {
     position: relative;
     z-index: 2;
@@ -1769,6 +1835,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     .editor-layout { grid-template-columns: 1fr; }
 }
 
+/* Titres des sections dans les panneaux latéraux de l'éditeur */
 .editor-tools h2,
 .editor-actions h2,
 .generator-intro h2 {
@@ -1781,6 +1848,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .editor-tools h2:first-child,
 .editor-actions h2:first-child { margin-top: 0; }
 
+/* Grille 2×N des boutons d'outils de dessin */
 .tool-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1797,6 +1865,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     transition: border-color 0.12s, color 0.12s;
 }
 .tool-btn:hover { border-color: var(--gold); color: var(--gold-bright); }
+/* Outil actif mis en évidence */
 .tool-btn.active {
     border-color: var(--gold);
     color: var(--gold);
@@ -1839,11 +1908,13 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     overflow: auto;
     max-height: 70vh;
 }
+/* La grille CSS est configurée dynamiquement par JavaScript (gridTemplateColumns) */
 .editor-grid {
     display: grid;
     gap: 2px;
     user-select: none;
 }
+/* Cases individuelles de la grille de l'éditeur */
 .editor-grid .cell {
     width: 28px;
     height: 28px;
@@ -1854,6 +1925,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     cursor: crosshair;
     image-rendering: pixelated;
 }
+/* Couleurs par type de case */
 .editor-grid .t-wall   { background: #4a5a6a; }
 .editor-grid .t-floor  { background: #0d1f40; color: transparent; }
 .editor-grid .t-gem    { background: #1a3050; color: var(--gold); }
@@ -1861,11 +1933,13 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .editor-grid .t-watch  { background: #2a200a; color: var(--gold); }
 .editor-grid .t-portal { background: #2a1848; color: var(--cyan); }
 .editor-grid .has-knight { background: #3a2a10; color: var(--gold-bright); }
+/* Contours colorés pour indiquer la présence d'un fantôme */
 .editor-grid .has-ghost-red { box-shadow: inset 0 0 0 2px var(--red); }
 .editor-grid .has-ghost-green { box-shadow: inset 0 0 0 2px var(--green); }
 .editor-grid .has-ghost-yellow { box-shadow: inset 0 0 0 2px var(--gold); }
 .editor-grid .has-ghost-blue { box-shadow: inset 0 0 0 2px var(--cyan); }
 
+/* Barre de statut en bas du canvas */
 .editor-status {
     margin-top: 12px;
     padding: 10px;
@@ -1876,6 +1950,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .editor-status.ok { border-color: var(--green); color: var(--green); }
 .editor-status.err { border-color: var(--red); color: var(--red); }
 
+/* Zone de résultat de validation */
 .validation-result {
     margin-top: 14px;
     font-size: 16px;
@@ -1886,6 +1961,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .validation-result .warn { color: var(--gold); }
 .validation-result ul { margin-left: 18px; }
 
+/* Boutons pleine largeur dans les panneaux latéraux */
 .editor-actions .menu-btn,
 .editor-tools .menu-btn,
 .generator-actions .menu-btn {
@@ -1893,6 +1969,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     margin-bottom: 10px;
 }
 
+/* Panneau central du générateur */
 .generator-main {
     position: relative;
     z-index: 2;
@@ -1906,7 +1983,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     line-height: 1.5;
     margin-bottom: 20px;
 }
-/* Difficulty selector (generator.php) */
+/* Sélecteur de difficulté en rangée horizontale */
 .diff-selector {
     display: flex;
     flex-direction: row;
@@ -1929,7 +2006,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     border-color: var(--gold);
     color: var(--gold);
 }
-/* IMPOSSIBLE button — blood-red with skull energy */
+/* Bouton IMPOSSIBLE : rouge sang avec effet de halo */
 .diff-selector .diff-btn--impossible {
     color: #cc2222;
     border-color: #6b1010;
@@ -1946,13 +2023,14 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     min-height: 1.4em;
 }
 
+/* Trois boutons d'action du générateur en grille */
 .generator-actions {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 10px;
     margin-bottom: 20px;
 }
-/* ── Generator level preview (canvas) ── */
+/* Animation d'apparition du canvas d'aperçu */
 @keyframes preview-appear {
     from { opacity: 0; transform: scale(0.93) translateY(8px); }
     to   { opacity: 1; transform: scale(1)    translateY(0); }
@@ -1963,6 +2041,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     justify-content: center;
     overflow-x: auto;
 }
+/* Cadre du canvas d'aperçu */
 .gen-grid-wrap {
     display: inline-block;
     flex-shrink: 0;
@@ -1981,7 +2060,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     image-rendering: crisp-edges;
 }
 
-/* Solver loading parade (knight follows ghosts L→R) */
+/* Overlay de chargement du solveur avec animation de parade */
 .solver-overlay {
     position: fixed;
     inset: 0;
@@ -1994,6 +2073,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 .solver-overlay[hidden] { display: none !important; }
 
+/* Panneau central de la parade (fantômes + chevalier qui courent) */
 .solver-parade {
     width: min(640px, 100%);
     text-align: center;
@@ -2006,6 +2086,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     margin-bottom: 20px;
     letter-spacing: 0.06em;
 }
+/* Piste d'animation de la parade */
 .parade-track {
     position: relative;
     height: 72px;
@@ -2015,6 +2096,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     border: 3px solid var(--gold-dark);
     overflow: hidden;
 }
+/* Sprites des personnages dans la parade */
 .parade-sprite {
     position: absolute;
     top: 50%;
@@ -2025,9 +2107,11 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     transform: translateY(-50%);
     animation: parade-run 3.2s linear infinite;
 }
+/* Décalages pour que les fantômes ne se superposent pas parfaitement */
 .parade-ghost.g1 { animation-delay: 0s; z-index: 2; }
 .parade-ghost.g2 { animation-delay: 0.15s; z-index: 2; left: -8%; }
 .parade-ghost.g3 { animation-delay: 0.3s; z-index: 2; left: -16%; }
+/* Le chevalier suit les fantômes avec un léger retard */
 .parade-knight {
     z-index: 3;
     animation: parade-knight-follow 3.2s linear infinite;
@@ -2041,13 +2125,14 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     0%   { left: -28%; }
     100% { left: 82%; }
 }
+/* Compteur de temps du solveur */
 .parade-progress {
     font-family: 'Press Start 2P', monospace;
     font-size: 10px;
     color: var(--cyan);
     margin-bottom: 8px;
 }
-/* Live best-of info injected during IMPOSSIBLE generation */
+/* Informations en direct pendant la génération IMPOSSIBLE */
 .impossible-info {
     color: #ff4444 !important;
     font-size: 9px !important;
@@ -2060,7 +2145,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 /* =========================================================
-   Leaderboard
+   CLASSEMENT (leaderboard.php)
    ========================================================= */
 
 .leaderboard-body { padding-bottom: 50px; }
@@ -2082,6 +2167,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     letter-spacing: 0.06em;
 }
 
+/* Tableau du classement */
 .lb-table {
     width: 100%;
     border-collapse: collapse;
@@ -2102,16 +2188,19 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     vertical-align: middle;
 }
 .lb-table tr:hover td { background: rgba(39, 68, 107, 0.3); }
+/* Mise en évidence de la ligne du joueur connecté */
 .lb-me td { background: rgba(224, 185, 90, 0.08); }
 .lb-rank { font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--stone-light); }
 .lb-pseudo { color: var(--cyan); font-weight: bold; }
 .lb-score { color: var(--gold); font-weight: bold; }
 
+/* Médailles pour les 3 premières places */
 .medal { font-size: 20px; }
 .medal.gold   { color: #ffd700; text-shadow: 0 0 8px #ffd700; }
 .medal.silver { color: #c0c0c0; text-shadow: 0 0 8px #c0c0c0; }
 .medal.bronze { color: #cd7f32; text-shadow: 0 0 8px #cd7f32; }
 
+/* Badge "YOU" affiché à côté du pseudo du joueur connecté */
 .you-tag {
     display: inline-block;
     background: var(--gold-dark);
@@ -2126,10 +2215,10 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 .star { color: var(--stone-light); }
 .star.on { color: var(--gold); }
 
-/* Submit result styling inside editor */
+/* Zone de résultat de soumission dans l'éditeur */
 #submitResult { margin-top: 10px; }
 
-/* ── Play sub-menu (play.php) ─────────────────────────────────── */
+/* ── Sous-menu de sélection de jeu (play.php) ─────────────────────── */
 .play-columns {
     display: flex;
     gap: 24px;
@@ -2160,7 +2249,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     color: var(--stone-light);
     line-height: 1.7;
     margin: 0;
-    flex: 1;
+    flex: 1; /* Pousse le bouton en bas de la carte */
 }
 .play-back {
     display: flex;
@@ -2169,10 +2258,10 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 
 /* =====================================================
-   MY LEVELS page
+   PAGE MES NIVEAUX (my_levels.php)
    ===================================================== */
 
-.mylevels-body { /* inherits global body */ }
+.mylevels-body { /* Hérite du style global du body */ }
 
 .mylevels-main {
     position: relative;
@@ -2182,7 +2271,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     padding: 0 24px;
 }
 
-/* Quick-create bar */
+/* Barre de création rapide en haut de la page */
 .mylevels-quickbar {
     display: flex;
     align-items: center;
@@ -2198,7 +2287,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 .mylevels-limit { color: var(--red); }
 
-/* Empty state */
+/* État vide (aucun niveau créé) */
 .mylevels-empty {
     text-align: center;
     padding: 60px 30px;
@@ -2218,14 +2307,14 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 .mylevels-empty-inline a { color: var(--gold); }
 
-/* Cards grid */
+/* Grille de cartes de niveaux */
 .mylevels-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
     gap: 20px;
 }
 
-/* Individual level card */
+/* Carte individuelle d'un niveau créé */
 .my-level-card {
     display: flex;
     flex-direction: column;
@@ -2233,6 +2322,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     padding: 18px 16px 14px;
     transition: transform 0.15s, opacity 0.3s;
 }
+/* Animation de suppression */
 .my-level-card.mlc-removing {
     opacity: 0;
     transform: scale(0.95);
@@ -2253,6 +2343,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     flex: 1;
     line-height: 1.5;
 }
+/* Badge PUBLIC ou DRAFT */
 .mlc-badge {
     font-family: 'Press Start 2P', monospace;
     font-size: 7px;
@@ -2272,6 +2363,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     display: block;
 }
 
+/* Statistiques de la carte (gemmes, fantômes, difficulté) */
 .mlc-stats {
     list-style: none;
     padding: 0;
@@ -2284,7 +2376,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
 }
 .mlc-safe { color: var(--green); }
 
-/* 2×2 action buttons */
+/* Boutons d'action en grille 2×2 */
 .mlc-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -2298,6 +2390,7 @@ button, .btn { font-family: 'Press Start 2P', monospace; }
     margin: 0 !important;
     text-align: center;
 }
+/* Bouton de suppression en rouge */
 .mlc-delete {
     border-color: #882222;
 }

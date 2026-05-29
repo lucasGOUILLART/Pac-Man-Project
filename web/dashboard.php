@@ -1,4 +1,5 @@
 <?php
+// Tableau de bord des niveaux de la campagne : affiche tous les niveaux avec les scores du joueur.
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/db.php';
 
@@ -7,16 +8,19 @@ requireLogin();
 $pdo    = getDB();
 $userId = currentUserId();
 
+// On récupère les infos de base du joueur (pseudo, niveau débloqué, score total)
 $stmt = $pdo->prepare('SELECT pseudo, niveau_actuel, score_total FROM utisateur WHERE id = ?');
 $stmt->execute([$userId]);
 $user = $stmt->fetch();
 
-// User no longer exists in DB. Force logout.
+// Sécurité : si l'utilisateur a disparu de la BDD, on le déconnecte proprement
 if (!$user) {
     header('Location: logout.php');
     exit;
 }
 
+// Récupération de tous les niveaux officiels (auteur_id IS NULL) avec les scores du joueur
+// On fait un LEFT JOIN pour obtenir null quand le joueur n'a pas encore joué ce niveau
 $stmt = $pdo->prepare('
     SELECT n.id, n.difficulte, n.score_max,
            ig.score_niveau AS best_score, ig.nb_piece AS gems_collected,
@@ -49,18 +53,22 @@ $levels = $stmt->fetchAll();
 <main class="dash-main">
     <section class="levels-grid">
         <?php foreach ($levels as $lvl):
+            // Un niveau est verrouillé si son id dépasse le niveau actuel du joueur
             $isLocked  = (int)$lvl['id'] > (int)$user['niveau_actuel'];
+            // Un niveau est terminé si le joueur a collecté des gemmes et un score > 0
             $isCleared = (int)$lvl['gems_collected'] > 0 && (int)$lvl['best_score'] > 0;
             $diff      = (int)$lvl['difficulte'];
         ?>
         <article class="level-card panel <?= $isLocked ? 'locked' : '' ?> <?= $isCleared ? 'cleared' : '' ?>">
             <div class="level-num">LEVEL <?= str_pad((string)(int)$lvl['id'], 2, '0', STR_PAD_LEFT) ?></div>
+            <!-- Affichage de la difficulté sous forme d'étoiles (1 à 5) -->
             <div class="level-stars">
                 <?php for ($i = 1; $i <= 5; $i++): ?>
                     <span class="star <?= $i <= $diff ? 'on' : '' ?>">★</span>
                 <?php endfor; ?>
             </div>
             <?php
+                // Formatage du meilleur temps (secondes → MM:SS), ou "—" si jamais complété
                 $tempsBest = $lvl['temps_best'] !== null ? (int)$lvl['temps_best'] : null;
                 $timeStr = $tempsBest !== null
                     ? str_pad((string)intdiv($tempsBest, 60), 2, '0', STR_PAD_LEFT) . ':' . str_pad((string)($tempsBest % 60), 2, '0', STR_PAD_LEFT)
@@ -72,6 +80,7 @@ $levels = $stmt->fetchAll();
                 <div>Best time: <strong><?= e($timeStr) ?></strong></div>
             </div>
             <?php if ($isLocked): ?>
+                <!-- Niveau verrouillé : le joueur doit finir les niveaux précédents -->
                 <div class="level-action locked-tag">LOCKED</div>
             <?php else: ?>
                 <a class="level-action" href="game.php?level=<?= (int)$lvl['id'] ?>">

@@ -1,11 +1,16 @@
 /**
- * Solver check with loading parade (max 15s) for editor / generator.
+ * Pont vers le solveur C avec affichage d'une animation de chargement (max 15s).
+ * Utilisé par l'éditeur et le générateur pour vérifier les niveaux.
  */
 (() => {
 'use strict';
 
-const SOLVER_MAX_MS = 15000;
+const SOLVER_MAX_MS = 15000; // Temps maximum accordé au solveur (15 secondes)
 
+/**
+ * Affiche l'animation de parade (fantômes qui courent) dans l'overlay donné.
+ * Retourne une fonction de fermeture à appeler quand le solveur a terminé.
+ */
 function showParade(overlayEl, message) {
     if (!overlayEl) return () => {};
     overlayEl.hidden = false;
@@ -22,6 +27,7 @@ function showParade(overlayEl, message) {
             <p class="parade-hint">The knight chases the shadows…</p>
         </div>
     `;
+    // On met à jour le compteur de temps toutes les 120ms pour un affichage fluide
     const progressEl = overlayEl.querySelector('#paradeProgress');
     const t0 = performance.now();
     const timer = setInterval(() => {
@@ -30,6 +36,7 @@ function showParade(overlayEl, message) {
             progressEl.textContent = `${(elapsed / 1000).toFixed(1)} s / 15 s`;
         }
     }, 120);
+    // La fonction retournée cache l'overlay et nettoie le timer
     return () => {
         clearInterval(timer);
         overlayEl.hidden = true;
@@ -38,10 +45,12 @@ function showParade(overlayEl, message) {
 }
 
 /**
- * @returns {Promise<object>} solver result
+ * Soumet un niveau au solveur C (via api/solve.php) en affichant l'animation d'attente.
+ * @returns {Promise<object>} Le résultat du solveur
  */
 function verifyLevel(levelText, opts = {}) {
     return new Promise((resolve, reject) => {
+        // On vérifie que le moteur de jeu est bien chargé avant d'appeler le solveur
         if (!window.OmbrequatreEngine?.solveViaC) {
             reject(new Error('Game engine not loaded.'));
             return;
@@ -51,13 +60,12 @@ function verifyLevel(levelText, opts = {}) {
         const requireSafe = opts.requireSafe !== false;
         const allowFallback = opts.allowFallback === true;
 
-        // Le solveur C (endpoint api/solve.php) gère lui-même le repli
-        // gem-only quand allowFallback est vrai.
+        // Le solveur C gère lui-même le repli gemmes-only quand allowFallback est vrai
         window.OmbrequatreEngine.solveViaC(levelText, {
             requireSafe,
             allowFallback,
         }).then(result => {
-            hide();
+            hide(); // On ferme l'animation quand la réponse arrive
             resolve(result);
         }).catch(err => {
             hide();

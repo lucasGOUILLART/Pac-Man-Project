@@ -2,10 +2,11 @@
 /**
  * POST api/delete_level.php
  *
- * Delete a personal level owned by the logged-in user.
+ * Supprime un niveau personnel appartenant à l'utilisateur connecté.
+ * On ne peut supprimer que ses propres niveaux (vérification via auteur_id).
  *
- * Body (JSON): { csrf_token: string, id: int }
- * Response:    { ok: true } | { ok: false, error: string }
+ * Corps (JSON): { csrf_token: string, id: int }
+ * Réponse :     { ok: true } | { ok: false, error: string }
  */
 
 header('Content-Type: application/json');
@@ -13,12 +14,14 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 
+// Accès refusé si l'utilisateur n'est pas connecté
 if (!isLoggedIn()) {
     http_response_code(401);
     echo json_encode(['ok' => false, 'error' => 'Not authenticated.']);
     exit;
 }
 
+// Lecture du corps JSON de la requête
 $body = json_decode(file_get_contents('php://input'), true);
 if (!is_array($body)) {
     http_response_code(400);
@@ -26,6 +29,7 @@ if (!is_array($body)) {
     exit;
 }
 
+// Vérification du token CSRF
 if (!csrfCheck($body['csrf_token'] ?? null)) {
     http_response_code(403);
     echo json_encode(['ok' => false, 'error' => 'Bad CSRF token.']);
@@ -43,10 +47,11 @@ $pdo    = getDB();
 $userId = currentUserId();
 
 try {
-    // Only delete levels owned by this user (auteur_id = userId)
+    // La clause AND auteur_id = ? garantit qu'on ne supprime que les niveaux du joueur
     $stmt = $pdo->prepare('DELETE FROM niveau WHERE id = ? AND auteur_id = ?');
     $stmt->execute([$levelId, $userId]);
 
+    // Si aucune ligne n'a été supprimée, c'est que le niveau n'existe pas ou n'appartient pas à ce joueur
     if ($stmt->rowCount() === 0) {
         http_response_code(404);
         echo json_encode(['ok' => false, 'error' => 'Level not found or not yours.']);

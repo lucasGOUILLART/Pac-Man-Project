@@ -1,45 +1,53 @@
 <?php
+// Page de jeu : charge les données du niveau et prépare le contexte pour le moteur JavaScript.
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/db.php';
 
 requireLogin();
 
-$playMode = $_GET['mode'] ?? 'campaign';
+$playMode = $_GET['mode'] ?? 'campaign'; // Mode de jeu : 'campaign', 'custom' ou 'generated'
 $powerUpsEnabled = powerUpsEnabled();
 
 if ($playMode === 'custom' || $playMode === 'generated') {
+    // En mode personnalisé ou aléatoire, la carte est stockée côté client (sessionStorage)
+    // On transmet juste un objet JSON minimal au moteur JS
     $levelLabel = $playMode === 'custom' ? 'CUSTOM' : 'RAND';
     $levelDataJson = json_encode([
-        'id'         => 0,
+        'id'         => 0,           // Pas d'id en BDD pour les niveaux personnalisés
         'mode'       => $playMode,
         'difficulte' => 3,
         'score_max'  => 999999,
-        'map'        => '',
+        'map'        => '',          // La carte sera chargée depuis sessionStorage par game.js
         'powerUps'   => $powerUpsEnabled,
         'label'      => $levelLabel,
     ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     $pageTitle = $playMode === 'custom' ? 'Custom Level' : 'Random Maze';
 } else {
+    // ── Mode campagne : on charge le niveau depuis la base de données ──
     $levelId = (int)($_GET['level'] ?? 1);
     if ($levelId < 1) $levelId = 1;
 
     $pdo = getDB();
 
+    // On vérifie que le joueur a bien débloqué ce niveau
     $stmt = $pdo->prepare('SELECT niveau_actuel FROM utisateur WHERE id = ?');
     $stmt->execute([currentUserId()]);
     $user = $stmt->fetch();
     if (!$user) { header('Location: logout.php'); exit; }
 
+    // Si le joueur essaie d'accéder à un niveau non débloqué, on le redirige
     if ($levelId > (int)$user['niveau_actuel']) {
         header('Location: dashboard.php');
         exit;
     }
 
+    // Chargement des données du niveau demandé
     $stmt = $pdo->prepare('SELECT id, difficulte, score_max, map FROM niveau WHERE id = ?');
     $stmt->execute([$levelId]);
     $level = $stmt->fetch();
     if (!$level) { header('Location: dashboard.php'); exit; }
 
+    // On formate le numéro de niveau sur 2 chiffres (ex. "01", "10")
     $levelLabel = str_pad((string)(int)$level['id'], 2, '0', STR_PAD_LEFT);
     $levelDataJson = json_encode([
         'id'         => (int)$level['id'],
@@ -65,6 +73,7 @@ if ($playMode === 'custom' || $playMode === 'generated') {
 <body class="game-body">
 <div class="vignette"></div>
 
+<!-- HUD (heads-up display) : statistiques en temps réel mises à jour par JavaScript -->
 <header class="game-hud">
     <div class="hud-left">
         <div class="hud-stat"><span class="hud-label">SCORE</span><span class="hud-value" id="score">000000</span></div>
@@ -73,6 +82,7 @@ if ($playMode === 'custom' || $playMode === 'generated') {
         <div class="hud-stat"><span class="hud-label">TURNS</span><span class="hud-value" id="moves">000</span></div>
         <div class="hud-stat"><span class="hud-label">TIME</span><span class="hud-value" id="time">00:00</span></div>
         <div class="hud-stat"><span class="hud-label">LIVES</span><span class="hud-value" id="lives"></span></div>
+        <!-- Indicateur ON/OFF du mode power-ups, défini côté serveur -->
         <div class="hud-stat hud-flag <?= $powerUpsEnabled ? 'on' : 'off' ?>">
             <span class="hud-label">POWERS</span>
             <span class="hud-value"><?= $powerUpsEnabled ? 'ON' : 'OFF' ?></span>
@@ -85,17 +95,21 @@ if ($playMode === 'custom' || $playMode === 'generated') {
     </div>
 </header>
 
+<!-- Bandeau de mode (STEALTH / COMBAT / CHRONOS) mis à jour dynamiquement -->
 <div class="mode-banner" id="modeBanner">
     <span class="mode-label">STATUS</span>
     <span class="mode-value" id="modeText">STEALTH</span>
 </div>
 
 <main class="game-main">
+    <!-- Zone principale avec le canvas de jeu -->
     <section class="game-canvas-wrap">
         <canvas id="canvas" width="640" height="640"></canvas>
+        <!-- Overlay affiché à la victoire ou au game over -->
         <div class="game-overlay" id="overlay" style="display:none;"></div>
     </section>
 
+    <!-- Panneau de solution (chemin optimal calculé par le solveur C) -->
     <aside id="solutionPanel" class="solution-panel">
         <h3>OPTIMAL PATH</h3>
         <p class="sol-sub">Computed from the start.<br>
@@ -109,6 +123,7 @@ if ($playMode === 'custom' || $playMode === 'generated') {
     </aside>
 </main>
 
+<!-- Pavé directionnel tactile pour mobile -->
 <div class="game-controls">
     <div class="dirs" id="dirs">
         <button class="dir-btn" data-dir="U" aria-label="Haut">▲</button>
@@ -123,10 +138,11 @@ if ($playMode === 'custom' || $playMode === 'generated') {
 </div>
 
 <script>
+// On expose les données du niveau et les identifiants au moteur JavaScript via des variables globales
 window.LEVEL_DATA = <?= $levelDataJson ?>;
 window.USER_ID    = <?= (int)currentUserId() ?>;
 window.CSRF_TOKEN = <?= json_encode(csrfToken()) ?>;
 </script>
-<script src="js/game.js?v=6"></script>
+<script src="js/game.js"></script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 <?php
+// Page du classement : top 10 mondial et records par niveau.
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/db.php';
 
@@ -7,7 +8,7 @@ requireLogin();
 $pdo    = getDB();
 $userId = currentUserId();
 
-// Top 10 players by total score
+// Récupération du top 10 des joueurs par score total (classement général)
 $topPlayers = $pdo->query('
     SELECT pseudo, score_total, niveau_actuel,
            (SELECT COALESCE(SUM(nb_piece), 0) FROM in_game WHERE id_joueur = u.id) AS total_gems
@@ -16,7 +17,8 @@ $topPlayers = $pdo->query('
     LIMIT 10
 ')->fetchAll();
 
-// Per-level top scores (best score per level, with player name)
+// Récupération du meilleur score par niveau (avec le nom du joueur détenteur du record)
+// La sous-requête s'assure qu'on ne garde que la ligne avec le score maximum pour chaque niveau
 $topByLevel = $pdo->query('
     SELECT n.id AS level_id, n.difficulte,
            u.pseudo,
@@ -32,6 +34,7 @@ $topByLevel = $pdo->query('
     ORDER BY n.id ASC
 ')->fetchAll();
 
+// Fonction utilitaire pour afficher un temps en secondes sous le format MM:SS
 function fmtTime(?int $sec): string {
     if ($sec === null) return '—';
     $m  = intdiv($sec, 60);
@@ -58,7 +61,7 @@ function fmtTime(?int $sec): string {
 
 <main class="leaderboard-shell">
 
-    <!-- Global ranking -->
+    <!-- Section 1 : Classement général des 10 meilleurs chevaliers -->
     <section class="lb-section panel">
         <h2>HALL OF FAME — TOP KNIGHTS</h2>
         <?php if (empty($topPlayers)): ?>
@@ -76,16 +79,17 @@ function fmtTime(?int $sec): string {
             </thead>
             <tbody>
             <?php foreach ($topPlayers as $rank => $p):
+                // On vérifie si cette ligne correspond au joueur connecté pour la mettre en évidence
                 $isCurrent = ($p['pseudo'] === currentUserPseudo());
             ?>
             <tr class="<?= $isCurrent ? 'lb-me' : '' ?>">
                 <td class="lb-rank">
                     <?php if ($rank === 0): ?>
-                        <span class="medal gold">★</span>
+                        <span class="medal gold">★</span>   <!-- 1ère place : médaille d'or -->
                     <?php elseif ($rank === 1): ?>
-                        <span class="medal silver">★</span>
+                        <span class="medal silver">★</span> <!-- 2ème place : médaille d'argent -->
                     <?php elseif ($rank === 2): ?>
-                        <span class="medal bronze">★</span>
+                        <span class="medal bronze">★</span> <!-- 3ème place : médaille de bronze -->
                     <?php else: ?>
                         <?= $rank + 1 ?>
                     <?php endif; ?>
@@ -101,7 +105,7 @@ function fmtTime(?int $sec): string {
         <?php endif; ?>
     </section>
 
-    <!-- Per-level records -->
+    <!-- Section 2 : Records par niveau (meilleur score pour chaque niveau de la campagne) -->
     <section class="lb-section panel">
         <h2>LEVEL RECORDS</h2>
         <?php if (empty($topByLevel)): ?>
@@ -123,6 +127,7 @@ function fmtTime(?int $sec): string {
             <tr>
                 <td class="lb-rank"><?= str_pad((string)(int)$row['level_id'], 2, '0', STR_PAD_LEFT) ?></td>
                 <td>
+                    <!-- Affichage de la difficulté en étoiles -->
                     <?php for ($i = 1; $i <= 5; $i++): ?>
                         <span class="star <?= $i <= (int)$row['difficulte'] ? 'on' : '' ?>">★</span>
                     <?php endfor; ?>

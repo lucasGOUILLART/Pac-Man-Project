@@ -1,33 +1,35 @@
 /* =========================================================
-   Les fantômes d'Ombrequatre — Game Engine (v2)
+   Les fantômes d'Ombrequatre — Moteur de jeu
 
-   CORE RULE — ONE PLAYER DECISION = ONE TURN.
+   RÈGLE FONDAMENTALE — UNE DÉCISION DU JOUEUR = UN TOUR.
 
-   When the player chooses a direction:
-     1. Each ghost makes EXACTLY ONE action (slide on ice until a wall
-        or junction, or for the Esprit abyssal: toggle visibility /
-        teleport).
-     2. The knight slides through cells until a wall or a junction —
-        same turn, animated in parallel with the ghosts.
-     3. Collision rule (simultaneous): collision occurs if the
-        knight's slide path (start cell + every traversed cell + end
-        cell) intersects any visible ghost's NEW position.
+   Quand le joueur choisit une direction :
+     1. Chaque fantôme effectue EXACTEMENT UNE action (glissement sur la
+        glace jusqu'à un mur ou une intersection, ou pour l'Esprit abyssal :
+        basculement visible/invisible avec téléportation).
+     2. Le chevalier glisse à travers les cases jusqu'à un mur ou une
+        intersection — même tour, animé en parallèle avec les fantômes.
+     3. Règle de collision (simultanée) : collision si le chemin de
+        glissement du chevalier (case départ + cases traversées + case
+        finale) intersecte la NOUVELLE position de n'importe quel fantôme visible.
 
-   So a long slide of 10 cells is still 1 turn; each ghost only acts
-   once during that turn. The knight can outrun ghosts on long runs.
+   Un long glissement de 10 cases = 1 seul tour ; chaque fantôme n'agit
+   qu'une fois durant ce tour. Le chevalier peut "distancer" les fantômes
+   sur de longues lignes droites.
    ========================================================= */
 
 (() => {
 'use strict';
 
 // =====================================================
-// Constants
+// Constantes de jeu
 // =====================================================
 
-const TILE        = 40;
-const SLIDE_MS    = 90;
-const FREEZE_MS   = 380;
+const TILE        = 40;   // Taille d'une case en pixels
+const SLIDE_MS    = 90;   // Durée d'une étape d'animation (ms)
+const FREEZE_MS   = 380;  // Durée entre deux ticks pendant le gel (ms)
 
+// Codes des types de cases dans la grille
 const T = {
     WALL:    '#',
     GEM:     '.',
@@ -37,23 +39,26 @@ const T = {
     EMPTY:   '_',
 };
 
+// Déplacements row/col pour chaque direction
 const DELTA = {
     U: { dr: -1, dc:  0 },
     D: { dr:  1, dc:  0 },
     L: { dr:  0, dc: -1 },
     R: { dr:  0, dc:  1 },
 };
-const OPP = { U: 'D', D: 'U', L: 'R', R: 'L' };
+const OPP = { U: 'D', D: 'U', L: 'R', R: 'L' }; // Direction opposée
 const ALL_DIRS = ['U', 'D', 'L', 'R'];
 
+// États possibles de la machine à états du jeu
 const STATE = {
-    WAITING:  'waiting',
-    SLIDING:  'sliding',
-    FROZEN:   'frozen',
+    WAITING:  'waiting',   // En attente d'une décision du joueur
+    SLIDING:  'sliding',   // Animation en cours
+    FROZEN:   'frozen',    // Chevalier gelé (effet montre chronos)
     GAMEOVER: 'gameover',
     WIN:      'win',
 };
 
+// Points accordés pour chaque type de collectible et pour éliminer un fantôme
 const SCORE = {
     GEM:    10,
     POTION: 50,
@@ -61,12 +66,12 @@ const SCORE = {
     GHOST:  200,
 };
 
-const COMBAT_TURNS         = 10;
-const CHRONOS_FREEZE_TURNS = 5;
-const GHOST_RESPAWN_TURNS  = 8;
+const COMBAT_TURNS         = 10; // Nombre de tours pendant lesquels les fantômes sont effrayés
+const CHRONOS_FREEZE_TURNS = 5;  // Nombre de tours de gel (montre chronos)
+const GHOST_RESPAWN_TURNS  = 8;  // Nombre de tours avant la réapparition d'un fantôme éliminé
 
 // =====================================================
-// Asset loading
+// Chargement des ressources graphiques
 // =====================================================
 
 const ASSET_PATHS = {
@@ -102,22 +107,24 @@ const ASSET_PATHS = {
     ghostFade4: 'img/fantomeDisparition4.png',
 };
 
+// Dictionnaire des images chargées, accessible par clé
 const imgs = {};
 function loadAssets() {
     return Promise.all(Object.entries(ASSET_PATHS).map(([key, src]) =>
         new Promise(resolve => {
             const img = new Image();
             img.onload  = () => { imgs[key] = img; resolve(); };
-            img.onerror = () => { imgs[key] = null; resolve(); };
+            img.onerror = () => { imgs[key] = null; resolve(); }; // On continue même en cas d'erreur
             img.src = src;
         })
     ));
 }
 
 // =====================================================
-// Level parsing
+// Parseur de niveau
 // =====================================================
 
+// Transforme le texte d'un niveau en objet { meta, grid }
 function parseLevel(text) {
     const lines = text.replace(/\r/g, '').split('\n');
     const meta = {
@@ -141,8 +148,9 @@ function parseLevel(text) {
         }
         i++;
     }
-    i++;
+    i++; // On saute la ligne "MAP"
 
+    // Construction de la grille ligne par ligne
     const grid = [];
     for (let r = 0; r < meta.height; r++) {
         const row = (lines[i + r] || '').padEnd(meta.width, '#');
@@ -152,7 +160,7 @@ function parseLevel(text) {
 }
 
 // =====================================================
-// Game class
+// Classe principale du jeu
 // =====================================================
 
 class Game {
@@ -160,36 +168,41 @@ class Game {
         this.canvas = canvas;
         this.ctx    = canvas.getContext('2d');
         this.opts   = { ...options, levelText };
-        // Strict check: only ON if explicitly true. Default is OFF.
+        // Les power-ups doivent être explicitement activés (true) — sinon c'est OFF
         this.usePowerUps = options.usePowerUps === true;
 
         const { meta, grid } = parseLevel(levelText);
         this.meta = meta;
         this.grid = grid;
 
+        // Le canvas s'adapte exactement à la taille de la grille
         canvas.width  = meta.width  * TILE;
         canvas.height = meta.height * TILE;
 
+        // On indexe les portails pour le fantôme bleu
         this.portals = [];
         for (let r = 0; r < meta.height; r++)
             for (let c = 0; c < meta.width; c++)
                 if (grid[r][c] === T.PORTAL) this.portals.push([r, c]);
 
+        // Comptage total des collectibles pour savoir quand le niveau est terminé
         this.totalGems = 0;
         for (let r = 0; r < meta.height; r++)
             for (let c = 0; c < meta.width; c++)
                 if ([T.GEM, T.POTION, T.WATCH].includes(grid[r][c])) this.totalGems++;
 
+        // Initialisation du chevalier à sa position de départ
         this.player = {
             row: meta.start.row,
             col: meta.start.col,
             dir: null,
             lastDir: null,
             animFrame: 0,
-            sx: meta.start.col * TILE,
+            sx: meta.start.col * TILE, // Position pixel courante (pour l'animation)
             sy: meta.start.row * TILE,
         };
 
+        // Création des objets fantômes selon les positions définies dans la carte
         this.ghosts = [];
         if (meta.ghosts.red)    this.ghosts.push(this._makeGhost('red',    meta.ghosts.red));
         if (meta.ghosts.green)  this.ghosts.push(this._makeGhost('green',  meta.ghosts.green));
@@ -201,6 +214,7 @@ class Game {
             this.ghosts.push(g);
         }
 
+        // Initialisation des compteurs de jeu
         this.state         = STATE.WAITING;
         this.score         = 0;
         this.gems          = 0;
@@ -210,28 +224,33 @@ class Game {
         this.elapsedSec    = 0;
         this.lastTurnPath  = null;
 
-        this.combatTurns         = 0;
-        this.chronosGhostFreeze  = 0;
-        this.chronosPlayerFreeze = 0;
+        // Compteurs des effets power-ups en cours
+        this.combatTurns         = 0;  // Tours restants de mode combat (potions)
+        this.chronosGhostFreeze  = 0;  // Tours restants de fantômes gelés (montre)
+        this.chronosPlayerFreeze = 0;  // Tours restants de chevalier gelé (montre)
         this.pendingChronos      = null;
 
+        // Variables d'animation interne
         this._slideTimer     = null;
         this._ghostAnims     = [];
         this._turnGhostEnds   = null;
         this._playerSliding   = false;
         this._slideOnComplete = null;
         this._frozenTimer = null;
+        // Horloge de jeu : incrémente elapsedSec chaque seconde
         this._timeTimer   = setInterval(() => this._tickTime(), 1000);
 
+        // Boucle de rendu : on dessine à chaque frame d'animation du navigateur
         this._renderLoop = () => { this.render(); this._raf = requestAnimationFrame(this._renderLoop); };
         this._raf = requestAnimationFrame(this._renderLoop);
     }
 
+    // Crée un objet fantôme avec ses valeurs initiales
     _makeGhost(type, pos) {
         return {
             type,
             row: pos.row, col: pos.col,
-            startRow: pos.row, startCol: pos.col,
+            startRow: pos.row, startCol: pos.col, // Position de réapparition
             lastDir: null,
             state: 'normal',
             visible: true,
@@ -245,14 +264,16 @@ class Game {
         };
     }
 
-    // -------- Walkability / junctions --------
+    // -------- Accessibilité et intersections --------
 
+    // Retourne le contenu d'une case (mur si hors-limites)
     cellAt(r, c) {
         if (r < 0 || r >= this.meta.height || c < 0 || c >= this.meta.width) return T.WALL;
         return this.grid[r][c];
     }
     isWalkable(r, c) { return this.cellAt(r, c) !== T.WALL; }
 
+    // Une intersection est une case où une direction perpendiculaire est accessible
     isJunction(r, c, currentDir) {
         for (const d of ALL_DIRS) {
             if (d === currentDir || d === OPP[currentDir]) continue;
@@ -262,6 +283,7 @@ class Game {
         return false;
     }
 
+    // Retourne les directions disponibles depuis la position du chevalier (pas de demi-tour)
     availableDirs() {
         const lastDir = this.player.lastDir;
         const reverse = lastDir ? OPP[lastDir] : null;
@@ -272,7 +294,8 @@ class Game {
         });
     }
 
-    /** Full path of the slide (INCLUDES start cell and final cell). */
+    /** Calcule le chemin complet d'un glissement depuis (r,c) dans la direction dir.
+     *  Retourne toutes les cases traversées (case départ incluse). */
     _computeSlidePathFrom(r, c, dir) {
         const { dr, dc } = DELTA[dir];
         const path = [[r, c]];
@@ -290,27 +313,30 @@ class Game {
         return this._computeSlidePathFrom(this.player.row, this.player.col, dir);
     }
 
-    // -------- Input / turn execution --------
+    // -------- Saisie et exécution d'un tour --------
 
+    // Demande un glissement dans une direction — point d'entrée principal du joueur
     requestSlide(dir) {
         if (this.state !== STATE.WAITING)     return false;
         if (!ALL_DIRS.includes(dir))          return false;
         if (!this.availableDirs().includes(dir)) return false;
 
-        // ==== ONE TURN BEGINS ====
+        // ==== UN TOUR COMMENCE ====
         this.moves++;
         this.player.dir     = dir;
         this.player.lastDir = dir;
 
-        // Tick mode counters
+        // Décrémentation des compteurs de modes actifs
         if (this.combatTurns > 0) {
             this.combatTurns--;
             if (this.combatTurns === 0) {
+                // Fin du mode combat : les fantômes effrayés redeviennent normaux
                 this.ghosts.forEach(g => { if (g.state === 'frightened') g.state = 'normal'; });
             }
         }
         if (this.chronosGhostFreeze > 0) this.chronosGhostFreeze--;
 
+        // Gestion de la résurrection des fantômes éliminés
         for (const g of this.ghosts) {
             if (g.state === 'defeated') {
                 g.respawnIn--;
@@ -322,12 +348,14 @@ class Game {
         return true;
     }
 
-    /** Plan ghost slides without moving them yet; returns animation list + end cells. */
+    /** Planifie les déplacements des fantômes pour ce tour sans les déplacer encore.
+     *  Retourne les animations à jouer et les positions finales. */
     _planGhostTurn() {
         const anims = [];
         const ends  = [];
 
         if (this.chronosGhostFreeze > 0) {
+            // Les fantômes sont gelés ce tour (effet montre chronos)
             for (const g of this.ghosts) {
                 if (g.state === 'defeated' || !g.visible) continue;
                 ends.push({ g, r: g.row, c: g.col });
@@ -339,6 +367,7 @@ class Game {
             if (g.state === 'defeated') continue;
 
             if (g.type === 'blue') {
+                // Le fantôme bleu a une mécanique spéciale de téléportation
                 const end = this._simulateBlueGhostEnd(g);
                 ends.push({ g, r: end.row, c: end.col, visible: end.visible });
                 anims.push({ g, blue: true, end });
@@ -362,9 +391,11 @@ class Game {
         return { anims, ends };
     }
 
+    // Calcule où se retrouvera le fantôme bleu à la fin de ce tour
     _simulateBlueGhostEnd(g) {
         const nextCount = g.teleportCounter + 1;
         if (nextCount % 2 === 0) {
+            // Tours pairs : téléportation au portail suivant dans le cycle
             const idx = this.portals.findIndex(p => p[0] === g.row && p[1] === g.col);
             const next = ((idx >= 0 ? idx : -1) + 1) % this.portals.length;
             return {
@@ -373,19 +404,21 @@ class Game {
                 visible: true,
             };
         }
+        // Tours impairs : le fantôme disparaît sur place
         return { row: g.row, col: g.col, visible: false };
     }
 
+    // Cherche la première collision entre le chemin du chevalier et les positions finales des fantômes
     _findFirstCollisionOnEnds(path, ends, startIdx = 0) {
         for (let i = startIdx; i < path.length; i++) {
             const [r, c] = path[i];
             for (const e of ends) {
                 if (e.g.state === 'defeated') continue;
                 if (e.visible === false) continue;
-                // NOTE: do NOT check e.g.visible here — for the blue ghost on a
-                // teleport turn the ghost is currently invisible (e.g.visible=false)
-                // but WILL be visible at its destination (e.visible=true).
-                // e.visible===false (checked above) already handles the invisible case.
+                // NOTE : on ne vérifie pas e.g.visible ici — pour le fantôme bleu lors d'une
+                // téléportation, il est actuellement invisible (e.g.visible=false) mais SERA
+                // visible à destination (e.visible=true). Le test e.visible===false ci-dessus
+                // gère déjà le cas invisible.
                 if (e.r === r && e.c === c) return { idx: i, ghost: e.g };
             }
         }
@@ -396,6 +429,7 @@ class Game {
         this._stopSlide();
         this._slideOnComplete = opts.onComplete || null;
 
+        // On planifie les mouvements des fantômes et on démarre les animations
         const { anims, ends } = this._planGhostTurn();
         this._turnGhostEnds = ends;
         this._ghostAnims = anims;
@@ -408,34 +442,31 @@ class Game {
         this._playerSliding = path.length >= 2;
 
         if (this._playerSliding) {
+            // On cherche la première collision sur le chemin du chevalier
             const hit = this._findFirstCollisionOnEnds(path, ends);
             this._slidePath    = path;
             this._slideStepIdx = 1;
             this._slideHitIdx  = hit ? hit.idx : -1;
 
-            // SWAP BUG FIX: if the ghost ends at path[0] (the player's START cell),
-            // _slideStepIdx starts at 1 and can never equal 0, so the check in
-            // _unifiedSlideStep would never fire. Handle it immediately here.
+            // CORRECTION BUG D'ÉCHANGE : si le fantôme finit à path[0] (case de départ du chevalier),
+            // _slideStepIdx commence à 1 et ne peut jamais atteindre 0. On traite ce cas ici.
             if (this._slideHitIdx === 0) {
-                // Only a true collision if the ghost STARTED in the player's forward
-                // direction (head-on swap). A ghost approaching from a perpendicular
-                // direction ends up at path[0] AFTER the player has already moved —
-                // that is a false positive and must not kill the player.
+                // Ce n'est une vraie collision que si le fantôme venait en face (échange de cases).
+                // Un fantôme arrivant perpendiculairement n'est pas une vraie collision.
                 const g0 = hit.ghost;
                 const { dr, dc } = DELTA[dir];
                 const trueSwap =
-                    (dc < 0 && g0.row === path[0][0] && g0.col < path[0][1]) ||  // L: ghost was left
-                    (dc > 0 && g0.row === path[0][0] && g0.col > path[0][1]) ||  // R: ghost was right
-                    (dr < 0 && g0.col === path[0][1] && g0.row < path[0][0]) ||  // U: ghost was above
-                    (dr > 0 && g0.col === path[0][1] && g0.row > path[0][0]);    // D: ghost was below
+                    (dc < 0 && g0.row === path[0][0] && g0.col < path[0][1]) ||  // L: fantôme à gauche
+                    (dc > 0 && g0.row === path[0][0] && g0.col > path[0][1]) ||  // R: fantôme à droite
+                    (dr < 0 && g0.col === path[0][1] && g0.row < path[0][0]) ||  // U: fantôme au-dessus
+                    (dr > 0 && g0.col === path[0][1] && g0.row > path[0][0]);    // D: fantôme en-dessous
 
                 if (trueSwap) {
                     this._clearTurnSlide();
                     this._loseLife();
                     return;
                 }
-                // False positive: perpendicular ghost slides into our start cell
-                // after we have left. Recalculate collision from path[1] onward.
+                // Faux positif : fantôme perpendiculaire qui arrive dans notre case de départ après qu'on est parti
                 const laterHit = this._findFirstCollisionOnEnds(path, ends, 1);
                 this._slideHitIdx = laterHit ? laterHit.idx : -1;
             }
@@ -445,6 +476,7 @@ class Game {
             !a.done && (a.blue || (a.path && a.stepIdx < a.path.length))
         );
         if (!this._playerSliding && !hasGhostMotion) {
+            // Rien à animer : on passe directement à WAITING
             const done = this._slideOnComplete;
             this._slideOnComplete = null;
             this.state = STATE.WAITING;
@@ -467,6 +499,7 @@ class Game {
         for (const g of this.ghosts) g.isSliding = false;
     }
 
+    // Avance d'une étape toutes les animations de fantômes en cours
     _advanceGhostAnims() {
         let anyActive = false;
         for (const a of this._ghostAnims) {
@@ -495,6 +528,7 @@ class Game {
         return anyActive;
     }
 
+    // Étape unifiée : avance simultanément les animations du chevalier et des fantômes
     _unifiedSlideStep() {
         if (this.state !== STATE.SLIDING) return this._stopSlide();
 
@@ -506,18 +540,21 @@ class Game {
             if (this._slideStepIdx < path.length) {
                 playerActive = true;
                 const [nr, nc] = path[this._slideStepIdx];
+                // On déplace le chevalier et on met à jour sa position pixel
                 this.player.row = nr;
                 this.player.col = nc;
                 this.player.sx  = nc * TILE;
                 this.player.sy  = nr * TILE;
                 this.player.animFrame = (this.player.animFrame + 1) % 2;
-                this._collectItem(nr, nc);
+                this._collectItem(nr, nc); // On ramasse l'objet sur cette case
 
                 if (this._slideStepIdx === this._slideHitIdx) {
+                    // Collision détectée à cette étape
                     this._handleCollisionAt(nr, nc);
                     if (this.state !== STATE.SLIDING) return;
                 } else {
                     if (this.gems >= this.totalGems) {
+                        // Toutes les gemmes collectées : victoire !
                         this._finalizeSlide(true);
                         return;
                     }
@@ -539,11 +576,13 @@ class Game {
         this._clearTurnSlide();
     }
 
+    // Finalise le tour après que toutes les animations sont terminées
     _finalizeSlide(victoryMidSlide) {
         const done = this._slideOnComplete;
         this._slideOnComplete = null;
         this._stopSlide();
         if (this.pendingChronos === 'freeze_player') {
+            // Effet montre : le chevalier est gelé pour plusieurs tours
             this.chronosPlayerFreeze = CHRONOS_FREEZE_TURNS;
             this.state = STATE.FROZEN;
             this.pendingChronos = null;
@@ -553,22 +592,22 @@ class Game {
         this.pendingChronos = null;
         if (victoryMidSlide || this.gems >= this.totalGems) { this._win(); return; }
 
-        // SAFETY NET: after all animation ticks, verify no ghost landed on the
-        // player's final cell. Catches any collision that was missed mid-slide
-        // (e.g. timing edge-cases, very short paths, ghost-on-destination).
+        // FILET DE SÉCURITÉ : après toutes les animations, on vérifie qu'aucun fantôme
+        // n'est arrivé sur la case finale du chevalier (cas limites d'animation)
         const dangerGhost = this.ghosts.find(g =>
             g.visible && g.state !== 'defeated' &&
             g.row === this.player.row && g.col === this.player.col
         );
         if (dangerGhost) {
             if (dangerGhost.state === 'frightened') {
+                // Mode combat actif : le fantôme effrayé est éliminé
                 dangerGhost.state     = 'defeated';
                 dangerGhost.visible   = false;
                 dangerGhost.respawnIn = GHOST_RESPAWN_TURNS;
                 dangerGhost.fadeFrame = 0;
                 dangerGhost.isSliding = false;
                 this.score += SCORE.GHOST;
-                // fall through to WAITING — player survives
+                // Le chevalier survit et le jeu continue
             } else {
                 this._loseLife();
                 return;
@@ -579,6 +618,7 @@ class Game {
         this.state = STATE.WAITING;
     }
 
+    // Gère une collision détectée pendant un glissement
     _handleCollisionAt(r, c) {
         const end = this._turnGhostEnds?.find(e =>
             e.visible !== false && e.g.state !== 'defeated' && e.r === r && e.c === c
@@ -588,6 +628,7 @@ class Game {
         );
 
         if (!ghost) {
+            // Faux positif : pas de fantôme sur cette case finalement
             this._playerSliding = false;
             if (!this._ghostAnims.some(a => !a.blue && a.stepIdx < a.path.length)) {
                 this._finalizeSlide(false);
@@ -596,6 +637,7 @@ class Game {
         }
 
         if (ghost.state === 'frightened') {
+            // Mode combat : le chevalier élimine le fantôme effrayé
             ghost.state     = 'defeated';
             ghost.visible   = false;
             ghost.respawnIn = GHOST_RESPAWN_TURNS;
@@ -608,6 +650,7 @@ class Game {
             if (this._slideStepIdx >= this._slidePath.length) {
                 this._playerSliding = false;
             } else {
+                // On recalcule s'il y a d'autres collisions plus loin sur le chemin
                 this._slideHitIdx = -1;
                 for (let i = this._slideStepIdx; i < this._slidePath.length; i++) {
                     const [rr, cc] = this._slidePath[i];
@@ -620,10 +663,12 @@ class Game {
             return;
         }
 
+        // Collision avec un fantôme normal : le chevalier perd une vie
         this._stopSlide();
         this._loseLife();
     }
 
+    // Ramasse l'objet sur la case (r, c) et applique les effets power-ups si activés
     _collectItem(r, c) {
         const t = this.grid[r][c];
         if (t === T.GEM) {
@@ -635,6 +680,7 @@ class Game {
             this.score += SCORE.POTION;
             this.gems++;
             if (this.usePowerUps) {
+                // Orbe sacrée : active le mode combat (fantômes effrayés)
                 this.combatTurns = COMBAT_TURNS;
                 this.ghosts.forEach(g => { if (g.state === 'normal') g.state = 'frightened'; });
             }
@@ -643,6 +689,7 @@ class Game {
             this.score += SCORE.WATCH;
             this.gems++;
             if (this.usePowerUps) {
+                // Montre chronos : selon la parité, gèle les fantômes ou le chevalier
                 const coin = (this.moves + this.gems) % 2;
                 if (coin === 0) this.chronosGhostFreeze = CHRONOS_FREEZE_TURNS;
                 else            this.pendingChronos = 'freeze_player';
@@ -650,12 +697,14 @@ class Game {
         }
     }
 
+    // Un tick pendant que le chevalier est gelé : les fantômes continuent de bouger
     _frozenTick() {
         clearInterval(this._frozenTimer);
         this._frozenTimer = null;
         this._startTurnSlide(null, { playerPath: [], onComplete: () => this._finishFrozenTick() });
     }
 
+    // Fin d'un tick de gel : vérifications de collision et décompte des tours restants
     _finishFrozenTick() {
         for (const g of this.ghosts) {
             if (g.state === 'defeated') {
@@ -672,6 +721,7 @@ class Game {
             return;
         }
         if (ghost && ghost.state === 'frightened') {
+            // Mode combat pendant le gel : on élimine le fantôme qui est sur nous
             ghost.state = 'defeated';
             ghost.visible = false;
             ghost.respawnIn = GHOST_RESPAWN_TURNS;
@@ -679,26 +729,28 @@ class Game {
         }
         this.chronosPlayerFreeze--;
         if (this.chronosPlayerFreeze <= 0) {
-            this.state = STATE.WAITING;
+            this.state = STATE.WAITING; // Gel terminé : le joueur reprend le contrôle
         } else {
             this.state = STATE.FROZEN;
             this._frozenTimer = setInterval(() => this._frozenTick(), FREEZE_MS);
         }
     }
 
-    // -------- Ghost movement (ONCE per turn, slides in parallel with knight) --------
+    // -------- Déplacement des fantômes (une action par tour, en parallèle avec le chevalier) --------
 
+    // Choisit la prochaine direction d'un fantôme selon son type
     _pickGhostDirection(g) {
         const reverse = g.lastDir ? OPP[g.lastDir] : null;
         let dir = null;
 
         if (g.type === 'yellow') {
+            // Âme corrompue : fuit dans la direction OPPOSÉE à la dernière du chevalier
             const pd = this.player.lastDir;
             if (!pd) {
                 dir = this._firstAvailable(g, ['U','D','L','R'], reverse);
             } else {
                 const target = OPP[pd];
-                if (target === reverse) return null;
+                if (target === reverse) return null; // Fuite impossible = immobile
                 const { dr, dc } = DELTA[target];
                 if (this.isWalkable(g.row + dr, g.col + dc)) dir = target;
                 else return null;
@@ -706,8 +758,10 @@ class Game {
         } else {
             let prio;
             if (g.state === 'frightened') {
+                // Fantôme effrayé : priorités inversées
                 prio = g.type === 'red' ? ['L','U','R','D'] : ['D','R','U','L'];
             } else {
+                // Fantôme rouge : R→D→L→U ; fantôme vert : U→L→D→R
                 prio = g.type === 'red' ? ['R','D','L','U'] : ['U','L','D','R'];
             }
             for (const d of prio) {
@@ -715,6 +769,7 @@ class Game {
                 const { dr, dc } = DELTA[d];
                 if (this.isWalkable(g.row + dr, g.col + dc)) { dir = d; break; }
             }
+            // En dernier recours, demi-tour autorisé (cul-de-sac)
             if (!dir && reverse) {
                 const { dr, dc } = DELTA[reverse];
                 if (this.isWalkable(g.row + dr, g.col + dc)) dir = reverse;
@@ -723,6 +778,7 @@ class Game {
         return dir;
     }
 
+    // Retourne la première direction disponible selon une liste de priorités
     _firstAvailable(g, prio, reverse) {
         for (const d of prio) {
             if (d === reverse) continue;
@@ -732,9 +788,11 @@ class Game {
         return null;
     }
 
+    // Effectue un tour de mouvement pour le fantôme bleu (téléportation / disparition)
     _stepBlueGhost(g) {
         g.teleportCounter++;
         if (g.teleportCounter % 2 === 0) {
+            // Tours pairs : on se déplace au portail suivant dans le cycle
             const idx = this.portals.findIndex(p => p[0] === g.row && p[1] === g.col);
             const next = ((idx >= 0 ? idx : -1) + 1) % this.portals.length;
             g.row = this.portals[next][0];
@@ -743,34 +801,41 @@ class Game {
             g.visible = true;
             g.fadeFrame = 0;
         } else {
+            // Tours impairs : le fantôme est invisible
             g.visible = false;
         }
     }
 
+    // Fait réapparaître un fantôme éliminé à sa position de départ
     _respawnGhost(g) {
         g.row = g.startRow; g.col = g.startCol;
         g.sx = g.col * TILE; g.sy = g.row * TILE;
         g.lastDir = null;
+        // Si le mode combat est actif, le fantôme réapparaît effrayé
         g.state = this.combatTurns > 0 ? 'frightened' : 'normal';
         g.visible = true;
         g.fadeFrame = 0;
         if (g.type === 'blue') g.teleportCounter = 0;
     }
 
+    // Le chevalier perd une vie et on réinitialise la carte
     _loseLife() {
         this._stopSlide();
         this.lives--;
         if (this.lives <= 0) { this._gameOver(); return; }
+        // On remet le chevalier à sa position de départ
         this.player.row = this.meta.start.row;
         this.player.col = this.meta.start.col;
         this.player.sx  = this.player.col * TILE;
         this.player.sy  = this.player.row * TILE;
         this.player.dir = null;
         this.player.lastDir = null;
+        // On réinitialise tous les effets de power-ups
         this.combatTurns = 0;
         this.chronosGhostFreeze  = 0;
         this.chronosPlayerFreeze = 0;
         this.pendingChronos = null;
+        // On remet tous les fantômes à leur position de départ
         this.ghosts.forEach(g => this._respawnGhost(g));
         this.ghosts.forEach(g => { if (g.state === 'frightened') g.state = 'normal'; });
         this.state = STATE.WAITING;
@@ -789,6 +854,7 @@ class Game {
         if (this._timeTimer) { clearInterval(this._timeTimer); this._timeTimer = null; }
         this._dispatchEnd(true);
     }
+    // Appelle le callback onEnd (sauvegarde du score, affichage de l'overlay)
     _dispatchEnd(cleared) {
         if (typeof this.opts.onEnd === 'function') {
             this.opts.onEnd({
@@ -803,22 +869,27 @@ class Game {
     }
 
     // =====================================================
-    // Rendering
+    // Rendu graphique
     // =====================================================
 
     render() {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // Fond bleu nuit
         ctx.fillStyle = '#001440';
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+        // Dessin de chaque case de la grille
         for (let r = 0; r < this.meta.height; r++)
             for (let c = 0; c < this.meta.width; c++)
                 this._drawTile(r, c, this.grid[r][c]);
 
+        // Traîne de glissement (cases traversées pendant le tour actuel)
         if (this.lastTurnPath && this.state === STATE.SLIDING) this._drawSlideTrail();
+        // Indicateurs de directions disponibles (petits losanges dorés)
         if (this.state === STATE.WAITING) this._drawAvailableDirs();
 
+        // Dessin des fantômes et du chevalier par-dessus la grille
         for (const g of this.ghosts) this._drawGhost(g);
         this._drawPlayer();
     }
@@ -827,7 +898,7 @@ class Game {
         const x = c * TILE, y = r * TILE;
         if (t === T.WALL) { this._drawWall(x, y, r, c); return; }
 
-        // Path background — dark blue/black floor
+        // Fond de case vide : bleu sombre avec légère variation
         this.ctx.fillStyle = '#0a1a3a';
         this.ctx.fillRect(x, y, TILE, TILE);
         this.ctx.fillStyle = 'rgba(39, 68, 107, 0.35)';
@@ -840,31 +911,34 @@ class Game {
         else if (t === T.PORTAL) this._drawPortal(cx, cy);
     }
 
+    // Dessin d'un mur avec effet de relief 3D et lisière dorée sur les bords exposés
     _drawWall(x, y, r, c) {
         const ctx = this.ctx;
         ctx.fillStyle = '#27446B';
         ctx.fillRect(x, y, TILE, TILE);
-        ctx.fillStyle = '#3a5f8c';
+        ctx.fillStyle = '#3a5f8c'; // Arrête lumineuse (bord haut et gauche)
         ctx.fillRect(x, y, TILE, 4);
         ctx.fillRect(x, y, 4, TILE);
-        ctx.fillStyle = '#162c4a';
+        ctx.fillStyle = '#162c4a'; // Arrête sombre (bord bas et droit)
         ctx.fillRect(x, y + TILE - 4, TILE, 4);
         ctx.fillRect(x + TILE - 4, y, 4, TILE);
-        ctx.fillStyle = '#E0B95A';
+        ctx.fillStyle = '#E0B95A'; // Lisière dorée sur les bords face à une case ouverte
         if (this.cellAt(r - 1, c) !== T.WALL) ctx.fillRect(x, y + TILE - 2, TILE, 2);
         if (this.cellAt(r + 1, c) !== T.WALL) ctx.fillRect(x, y, TILE, 2);
         if (this.cellAt(r, c - 1) !== T.WALL) ctx.fillRect(x + TILE - 2, y, 2, TILE);
         if (this.cellAt(r, c + 1) !== T.WALL) ctx.fillRect(x, y, 2, TILE);
+        // Petits pixels décoratifs pour donner une texture de pierre
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         const seed = (r * 31 + c * 7) % 8;
         ctx.fillRect(x + 8 + seed, y + 12, 2, 2);
         ctx.fillRect(x + 22, y + 24 - seed, 2, 2);
     }
 
+    // Dessin d'une pièce dorée avec effet de rotation (basé sur le temps)
     _drawCoin(cx, cy) {
         const ctx = this.ctx;
         const t = Date.now() / 400 + cx * 0.02;
-        const w = 7 + 0.5 * Math.sin(t);
+        const w = 7 + 0.5 * Math.sin(t); // Oscillation pour simuler la rotation
         ctx.fillStyle = '#8B603F';
         ctx.fillRect(cx - w, cy - 7, w * 2, 14);
         ctx.fillStyle = '#E0B95A';
@@ -875,6 +949,7 @@ class Game {
         ctx.fillRect(cx - w + 2, cy - 5, 2, 2);
     }
 
+    // Dessin d'une potion (orbe sacrée) avec halo pulsant
     _drawPotion(cx, cy) {
         const ctx = this.ctx;
         const t = Date.now() / 300;
@@ -903,6 +978,7 @@ class Game {
         ctx.fillRect(cx - 1, cy - 1, 2, 2);
     }
 
+    // Dessin d'une montre chronos avec aiguilles animées
     _drawWatch(cx, cy) {
         const ctx = this.ctx;
         ctx.fillStyle = '#5B3D91';
@@ -912,6 +988,7 @@ class Game {
         const t = Date.now() / 1000;
         ctx.fillStyle = '#E0B95A';
         ctx.fillRect(cx - 1, cy - 1, 2, 2);
+        // Petite aiguille (heures) et grande aiguille (minutes) tournent à des vitesses différentes
         const hx = Math.cos(t * 0.5 - Math.PI / 2) * 3;
         const hy = Math.sin(t * 0.5 - Math.PI / 2) * 3;
         ctx.fillRect(cx + Math.round(hx), cy + Math.round(hy), 2, 2);
@@ -920,6 +997,7 @@ class Game {
         ctx.fillRect(cx + Math.round(mx), cy + Math.round(my), 2, 2);
     }
 
+    // Dessin d'un portail avec anneau lumineux pulsant (réservé au fantôme bleu)
     _drawPortal(cx, cy) {
         const ctx = this.ctx;
         const t = Date.now() / 600;
@@ -939,6 +1017,7 @@ class Game {
         ctx.stroke();
     }
 
+    // Traîne semi-transparente sur le chemin parcouru pendant le glissement actuel
     _drawSlideTrail() {
         const ctx = this.ctx;
         const path = this.lastTurnPath;
@@ -949,6 +1028,7 @@ class Game {
         }
     }
 
+    // Petits losanges pulsants dans les cases où le chevalier peut aller
     _drawAvailableDirs() {
         const ctx = this.ctx;
         const cx = this.player.col * TILE + TILE / 2;
@@ -964,28 +1044,33 @@ class Game {
         }
     }
 
+    // Dessin du chevalier avec rotation selon sa direction et animation de combat
     _drawPlayer() {
         const ctx = this.ctx;
         const x = this.player.sx, y = this.player.sy;
         let key;
         if (this.combatTurns > 0) {
+            // Mode combat : animation d'attaque alternée
             key = (Math.floor(Date.now() / 200) % 2 === 0) ? 'knightAtkBig' : 'knightAtkSmall';
         } else if (this.state === STATE.SLIDING) {
             key = this.player.animFrame === 0 ? 'knightMove1' : 'knightMove2';
         } else {
+            // Idle : animation de respiration
             key = (Math.floor(Date.now() / 300) % 2 === 0) ? 'knightIdle' : 'knightMouth';
         }
         const img = imgs[key];
 
         ctx.save();
         ctx.translate(x + TILE / 2, y + TILE / 2);
+        // Rotation du sprite selon la direction de déplacement
         const angle = { R: 0, D: Math.PI/2, L: Math.PI, U: -Math.PI/2 }[this.player.dir] || 0;
         ctx.rotate(angle);
         if (img) {
-            const scale = key.startsWith('knightAtk') ? 1.15 : 1.0;
+            const scale = key.startsWith('knightAtk') ? 1.15 : 1.0; // Légèrement plus grand en attaque
             const sz = TILE * scale;
             ctx.drawImage(img, -sz / 2, -sz / 2, sz, sz);
         } else {
+            // Fallback graphique si l'image n'est pas chargée
             ctx.fillStyle = '#E0B95A';
             ctx.beginPath();
             const m = 0.25 + 0.18 * Math.abs(Math.sin(Date.now() / 200));
@@ -995,6 +1080,7 @@ class Game {
         }
         ctx.restore();
 
+        // Contour rouge clignotant quand le chevalier est gelé
         if (this.chronosPlayerFreeze > 0) {
             const c = Math.floor(Math.sin(Date.now() / 150) * 80) + 175;
             ctx.strokeStyle = `rgb(${c}, 60, 60)`;
@@ -1003,11 +1089,13 @@ class Game {
         }
     }
 
+    // Dessin d'un fantôme selon son état (normal, effrayé, éliminé, invisible)
     _drawGhost(g) {
         const ctx = this.ctx;
         const x = g.sx, y = g.sy;
 
         if (g.state === 'defeated') {
+            // Fantôme éliminé : animation de disparition
             const frame = Math.floor(Date.now() / 120) % 4 + 1;
             const img = imgs[`ghostFade${frame}`];
             if (img) {
@@ -1020,6 +1108,7 @@ class Game {
 
         if (!g.visible) {
             if (g.type === 'blue') {
+                // Fantôme bleu invisible : silhouette fantomatique très transparente
                 const frame = Math.floor(Date.now() / 120) % 4 + 1;
                 const img = imgs[`ghostFade${frame}`];
                 if (img) {
@@ -1033,9 +1122,11 @@ class Game {
 
         let key;
         if (g.state === 'frightened') {
+            // Fantôme effrayé : animation bleue tremblante
             const frame = Math.floor(Date.now() / 150) % 4 + 1;
             key = `ghostScared${frame}`;
         } else {
+            // Correspondance type → sprites normaux (immobile/mouvement)
             const map = {
                 red:    ['ghostRedCornes',    'ghostRedMove'],
                 green:  ['ghostGreenCornes',  'ghostGreenMove'],
@@ -1051,10 +1142,12 @@ class Game {
         }
         const img = imgs[key];
         if (img) {
+            // Les sprites avec cornes sont dessinés légèrement plus grands (débordement)
             const oversize = key.endsWith('Cornes') ? 1.25 : 1.0;
             const sz = TILE * oversize;
             ctx.drawImage(img, x + (TILE - sz) / 2, y + (TILE - sz) / 2, sz, sz);
         } else {
+            // Fallback : cercle coloré si l'image n'est pas disponible
             const colors = { red: '#FF3B3B', green: '#3BFF66', yellow: '#E0B95A', blue: '#66E6FF' };
             ctx.fillStyle = g.state === 'frightened' ? '#5B3D91' : colors[g.type];
             ctx.beginPath();
@@ -1063,6 +1156,7 @@ class Game {
         }
     }
 
+    // Nettoyage des ressources quand la page est quittée
     destroy() {
         this._stopSlide();
         if (this._frozenTimer) clearInterval(this._frozenTimer);
@@ -1073,17 +1167,19 @@ class Game {
 }
 
 // =====================================================
-// Solution panel — renders the move list with progress marker
+// Panneau de solution — affiche la liste des mouvements avec curseur de progression
 // =====================================================
 
 const ARROW = { U: '↑', D: '↓', L: '←', R: '→' };
 const ARROW_TXT = { U: 'UP', D: 'DOWN', L: 'LEFT', R: 'RIGHT' };
 
+// Remplit le panneau de solution avec les résultats du solveur
 function renderSolutionPanel(panel, result, opts = {}) {
     const { fromCurrent = false, currentMove = 0 } = opts;
     if (!panel) return;
 
     if (!result.found) {
+        // Messages d'erreur selon la raison de l'échec
         const reasons = {
             no_path:            'No safe path could be found.<br>The Wardens block every route.',
             node_limit:         'Search space too large — solver gave up.',
@@ -1121,6 +1217,7 @@ function renderSolutionPanel(panel, result, opts = {}) {
     }
     const sourceNote = '<span class="sol-source">⚙ Live solver</span>';
 
+    // Génération de la liste des mouvements avec marquage done/next
     const items = moves.map((m, i) => {
         const done = i < currentMove;
         const next = i === currentMove;
@@ -1142,9 +1239,10 @@ function renderSolutionPanel(panel, result, opts = {}) {
 
 
 // =====================================================
-// UI wiring
+// Interface utilisateur
 // =====================================================
 
+// Formate un nombre de secondes en "MM:SS"
 function fmtTime(s) {
     const m = Math.floor(s / 60).toString().padStart(2, '0');
     const ss = (s % 60).toString().padStart(2, '0');
@@ -1152,6 +1250,7 @@ function fmtTime(s) {
 }
 function pad(n, w) { return n.toString().padStart(w, '0'); }
 
+// Met à jour tous les éléments du HUD depuis l'état courant du jeu
 function updateUI(game) {
     document.getElementById('score').textContent = pad(game.score, 6);
     document.getElementById('gems').textContent  = `${pad(game.gems, 2)}/${pad(game.totalGems, 2)}`;
@@ -1159,6 +1258,7 @@ function updateUI(game) {
     document.getElementById('moves').textContent = pad(game.moves, 3);
     document.getElementById('time').textContent  = fmtTime(game.elapsedSec);
 
+    // Mise à jour du bandeau de mode selon les effets actifs
     let modeText = 'STEALTH';
     let modeCls  = '';
     if (game.combatTurns > 0) {
@@ -1180,6 +1280,7 @@ function updateUI(game) {
         document.getElementById('modeText').textContent = modeText;
     }
 
+    // Activation/désactivation des boutons directionnels selon les mouvements disponibles
     const available = game.state === 'waiting' ? game.availableDirs() : [];
     document.querySelectorAll('.dir-btn[data-dir]').forEach(btn => {
         const d = btn.dataset.dir;
@@ -1189,6 +1290,7 @@ function updateUI(game) {
     });
 }
 
+// Affiche l'overlay de fin de partie (victoire ou game over) avec les statistiques
 function showOverlay(game, payload) {
     const overlay = document.getElementById('overlay');
     overlay.style.display = 'flex';
@@ -1211,7 +1313,7 @@ function showOverlay(game, payload) {
 }
 
 // =====================================================
-// Pre-game modal — toggle power-ups before starting
+// Modal pré-jeu — toggle power-ups avant de commencer
 // =====================================================
 
 function showPreGameModal() {
@@ -1231,17 +1333,13 @@ function showPreGameModal() {
 }
 
 // =====================================================
-// Boot
-// =====================================================
-
-// =====================================================
-// Solver : appel du solveur C via l'endpoint PHP api/solve.php
+// Solveur : appel du solveur C via l'endpoint PHP api/solve.php
 // =====================================================
 
 /**
- * Resout un niveau en appelant le solveur C (binaire compile) via
- * l'endpoint PHP api/solve.php. Le navigateur ne peut pas executer de
- * C : tout le calcul se fait cote serveur.
+ * Résout un niveau en appelant le solveur C (binaire compilé) via
+ * l'endpoint PHP api/solve.php. Le navigateur ne peut pas exécuter du
+ * C : tout le calcul se fait côté serveur.
  *
  * @param {string} levelText  Niveau au format .txt du projet.
  * @param {object} opts       { requireSafe, allowFallback }
@@ -1258,7 +1356,7 @@ async function solveViaC(levelText, opts = {}) {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
     });
-    // L'endpoint renvoie du JSON meme en cas d'erreur (code 4xx/5xx).
+    // L'endpoint renvoie du JSON même en cas d'erreur (code 4xx/5xx).
     let payload = null;
     try { payload = await resp.json(); } catch (_) {}
     if (payload && typeof payload.found !== 'undefined') return payload;
@@ -1267,15 +1365,15 @@ async function solveViaC(levelText, opts = {}) {
 
 /** Charge la solution optimale initiale via le solveur C. */
 function loadOptimalSolution(game, panel) {
-    console.log('[Solver] Resolution via le solveur C (api/solve.php)');
+    console.log('[Solver] Résolution via le solveur C (api/solve.php)');
     computeSolution(game, panel);
 }
 
-/** Calcule et affiche la solution optimale du niveau (depuis le depart). */
+/** Calcule et affiche la solution optimale du niveau (depuis le départ). */
 function computeSolution(game, panel) {
     panel.innerHTML = `
         <h3>OPTIMAL PATH</h3>
-        <p class="sol-empty">Computing via C solver\u2026</p>
+        <p class="sol-empty">Computing via C solver…</p>
     `;
 
     solveViaC(window.LEVEL_DATA.map, {
@@ -1293,21 +1391,21 @@ function computeSolution(game, panel) {
     });
 }
 
-/** Demande un indice depuis la position actuelle du joueur. Serialise
- *  l'etat courant en niveau-texte et le soumet au solveur C, puis met
- *  en surbrillance le prochain coup sur le pave directionnel. */
+/** Demande un indice depuis la position actuelle du joueur. Sérialise
+ *  l'état courant en niveau-texte et le soumet au solveur C, puis met
+ *  en surbrillance le prochain coup sur le pavé directionnel. */
 function requestHintFromHere(game, panel, solverBtn) {
     const originalLabel = solverBtn.textContent;
     solverBtn.disabled = true;
-    solverBtn.textContent = 'COMPUTING\u2026';
+    solverBtn.textContent = 'COMPUTING…';
 
     panel.innerHTML = `
         <h3>HINT FROM HERE</h3>
-        <p class="sol-empty">Computing path from your current position\u2026</p>
+        <p class="sol-empty">Computing path from your current position…</p>
     `;
 
-    // Serialise l'etat courant : gemmes deja ramassees retirees de la
-    // carte, P repositionne, positions des fantomes mises a jour.
+    // On sérialise l'état courant : gemmes déjà ramassées retirées de la
+    // carte, P repositionné, positions des fantômes mises à jour.
     const customLevel = buildLevelFromCurrent(game);
 
     solveViaC(customLevel, {
@@ -1320,11 +1418,13 @@ function requestHintFromHere(game, panel, solverBtn) {
         game._solutionFromCurrent = true;
         renderSolutionPanel(panel, result, { fromCurrent: true, currentMove: 0 });
 
+        // On met en surbrillance le prochain mouvement suggéré sur le pavé directionnel
         if (result.found && result.moves.length > 0) {
             const nextMove = result.moves[0];
             document.querySelectorAll('.dir-btn[data-dir]').forEach(b => {
                 b.classList.toggle('suggested', b.dataset.dir === nextMove);
             });
+            // On retire la surbrillance après 3,5 secondes
             setTimeout(() => {
                 document.querySelectorAll('.dir-btn[data-dir]').forEach(b =>
                     b.classList.remove('suggested'));
@@ -1340,17 +1440,17 @@ function requestHintFromHere(game, panel, solverBtn) {
     });
 }
 
-/** Reconstruct a level text from the current game state — used for HINT
- *  FROM HERE. Already-collected gems become '_' in the map, and the player
- *  start (P) is overridden to current position. Ghost start positions are
- *  also overridden to current positions. */
+/** Reconstruit un texte de niveau depuis l'état courant du jeu pour la fonctionnalité INDICE.
+ *  Les gemmes déjà collectées deviennent '_', la position P est mise à jour,
+ *  et les positions des fantômes sont actualisées. */
 function buildLevelFromCurrent(game) {
     const meta = game.meta;
     const lines = [
         `W ${meta.width}`,
         `H ${meta.height}`,
-        `P ${game.player.row} ${game.player.col}`,
+        `P ${game.player.row} ${game.player.col}`, // Position actuelle du chevalier
     ];
+    // On n'inclut que les fantômes encore actifs (non éliminés et visibles)
     for (const g of game.ghosts) {
         if (g.state === 'defeated' || !g.visible) continue;
         const tag = { red: 'R', green: 'G', yellow: 'Y', blue: 'B' }[g.type];
@@ -1358,19 +1458,25 @@ function buildLevelFromCurrent(game) {
     }
     lines.push('MAP');
     for (let r = 0; r < meta.height; r++) {
-        lines.push(game.grid[r].join(''));
+        lines.push(game.grid[r].join('')); // La grille reflète déjà les gemmes collectées
     }
     return lines.join('\n');
 }
 
+
+// =====================================================
+// Démarrage du jeu
+// =====================================================
 
 async function boot() {
     if (!window.LEVEL_DATA) { console.error('No LEVEL_DATA'); return; }
 
     const playMode = window.LEVEL_DATA.mode || 'campaign';
     if (playMode === 'custom' || playMode === 'generated') {
+        // En mode personnalisé, la carte est stockée dans sessionStorage par la page précédente
         const stored = sessionStorage.getItem('ombrequatre_play_map');
         if (!stored) {
+            // Si plus de carte en session, on redirige vers la source appropriée
             window.location.href = playMode === 'custom' ? 'editor.php' : 'generator.php';
             return;
         }
@@ -1379,16 +1485,16 @@ async function boot() {
 
     await loadAssets();
 
-    // Use power-ups setting from server (session-stored, set in main menu).
-    // window.LEVEL_DATA.powerUps is true/false depending on the user's choice.
+    // Le mode power-ups vient du serveur (stoké en session PHP côté serveur)
     const usePowerUps = window.LEVEL_DATA.powerUps === true;
-    console.log('[Game] Power-ups mode:', usePowerUps ? 'ON' : 'OFF');
+    console.log('[Game] Mode power-ups :', usePowerUps ? 'ON' : 'OFF');
 
     const canvas = document.getElementById('canvas');
     const game = new Game(canvas, window.LEVEL_DATA.map, {
         usePowerUps,
         onEnd: async (payload) => {
             showOverlay(game, payload);
+            // On ne sauvegarde le score qu'en mode campagne (les niveaux ont un id BDD)
             if (!window.LEVEL_DATA.id) return;
             try {
                 await fetch('api/save_score.php', {
@@ -1403,16 +1509,16 @@ async function boot() {
                         time_sec:   payload.timeSec,
                     }),
                 });
-            } catch (_) {}
+            } catch (_) {} // On ignore les erreurs réseau silencieusement
         },
     });
-    window._game = game;
+    window._game = game; // Accessible depuis la console pour le débogage
 
-    // 3) Load optimal solution via Web Worker
+    // Panneau de solution : caché par défaut, le joueur peut le révéler avec le bouton
     const gameMain = document.querySelector('.game-main');
     const solutionPanel = document.getElementById('solutionPanel');
     const toggleSolutionsBtn = document.getElementById('toggleSolutionsBtn');
-    let solutionsHidden = true;  // hidden by default; player reveals with the button
+    let solutionsHidden = true;
     const applySolutionsVisibility = () => {
         if (gameMain) {
             gameMain.classList.toggle('solutions-hidden', solutionsHidden);
@@ -1436,16 +1542,15 @@ async function boot() {
     }
     if (solutionPanel) {
         solutionPanel.innerHTML = '<h3>OPTIMAL PATH</h3><p class="sol-empty">Loading solution…</p>';
-
         loadOptimalSolution(game, solutionPanel);
     }
     applySolutionsVisibility();
 
-    // 4) Keyboard + buttons
+    // Branchement des touches clavier (flèches + ZQSD/WASD)
     const keyToDir = {
         ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R',
         w: 'U', s: 'D', a: 'L', d: 'R',
-        z: 'U', q: 'L',
+        z: 'U', q: 'L', // Layout AZERTY
     };
     document.addEventListener('keydown', e => {
         const dir = keyToDir[e.key];
@@ -1453,12 +1558,13 @@ async function boot() {
         e.preventDefault();
         const before = game.moves;
         game.requestSlide(dir);
-        // After move, advance solution pointer if on track
+        // Après le mouvement, on avance le curseur dans la solution si le coup correspondait
         setTimeout(() => {
             if (game.moves > before) advanceSolutionMarker(game, dir);
         }, 20);
     });
 
+    // Branchement des boutons directionnels du pavé tactile
     document.querySelectorAll('.dir-btn[data-dir]').forEach(btn => {
         btn.addEventListener('click', () => {
             const before = game.moves;
@@ -1470,7 +1576,7 @@ async function boot() {
         });
     });
 
-    // 5) "Hint from here" button — recompute from current state via Worker
+    // Bouton "Indice depuis ici" : recalcule depuis la position actuelle
     const solverBtn = document.getElementById('solverBtn');
     if (solverBtn) {
         solverBtn.addEventListener('click', () => {
@@ -1479,27 +1585,28 @@ async function boot() {
         });
     }
 
+    // On met à jour le HUD toutes les 80ms pour un affichage réactif
     setInterval(() => updateUI(game), 80);
     updateUI(game);
 }
 
-/** When the user plays a move, advance the progress marker in the solution
- *  panel if the move matches the next expected move. Otherwise mark the
- *  solution as "off-path" (the user diverged). */
+/** Quand le joueur joue un coup, on avance le marqueur de progression dans la solution.
+ *  Si le coup ne correspond pas à la solution optimale, on affiche un avertissement. */
 function advanceSolutionMarker(game, playedDir) {
     const panel = document.getElementById('solutionPanel');
     if (!panel || !game._initialSolution || !game._initialSolution.found) return;
-    if (game._solutionFromCurrent) return;  // "hint from here" mode
+    if (game._solutionFromCurrent) return; // En mode "indice depuis ici", pas de suivi
 
     if (!game._solCursor) game._solCursor = 0;
     const sol = game._initialSolution.moves;
 
     if (game._solCursor < sol.length && sol[game._solCursor] === playedDir) {
+        // Le joueur suit la solution optimale : on avance le curseur
         game._solCursor++;
         renderSolutionPanel(panel, game._initialSolution,
             { fromCurrent: false, currentMove: game._solCursor });
     } else {
-        // diverged — overlay a small banner once
+        // Le joueur a dévié du chemin optimal : on affiche une bannière d'avertissement
         const note = panel.querySelector('.sol-divergence');
         if (!note) {
             const div = document.createElement('div');
@@ -1510,6 +1617,7 @@ function advanceSolutionMarker(game, playedDir) {
     }
 }
 
+// On expose le moteur au reste du code (solver-bridge.js et editor.js en ont besoin)
 window.OmbrequatreEngine = { Game, solveViaC };
 
 document.addEventListener('DOMContentLoaded', () => {

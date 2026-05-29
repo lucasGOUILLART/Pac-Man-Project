@@ -1,18 +1,21 @@
 <?php
+// Page d'accueil : formulaire de connexion ET d'inscription sur la même page.
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/db.php';
 
 startSecureSession();
 
+// Si l'utilisateur est déjà connecté, on l'envoie directement au menu principal
 if (isLoggedIn()) {
     header('Location: menu.php');
     exit;
 }
 
 $errors = [];
-$mode   = $_POST['mode'] ?? 'login';
+$mode   = $_POST['mode'] ?? 'login'; // Par défaut on affiche le formulaire de connexion
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // On vérifie d'abord le token CSRF pour se protéger des attaques cross-site
     if (!csrfCheck($_POST['csrf_token'] ?? null)) {
         $errors[] = 'Invalid security token. Please refresh and try again.';
     } else {
@@ -20,9 +23,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password = $_POST['password'] ?? '';
 
         if ($mode === 'register') {
+            // ── Inscription d'un nouveau chevalier ──
             $email = trim($_POST['email'] ?? '');
 
-            // Validation
+            // Validation des champs avant d'aller en base
             if (strlen($pseudo) < 3 || strlen($pseudo) > 30) {
                 $errors[] = 'Pseudo must be 3-30 characters.';
             }
@@ -38,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (empty($errors)) {
                 $pdo = getDB();
+                // On vérifie si le pseudo ou l'email est déjà pris
                 $stmt = $pdo->prepare(
                     'SELECT id FROM utisateur WHERE pseudo = ? OR adresse_mail = ?'
                 );
@@ -45,19 +50,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stmt->fetch()) {
                     $errors[] = 'This pseudo or email is already registered.';
                 } else {
+                    // On hache le mot de passe avec bcrypt avant de l'enregistrer
                     $hash = password_hash($password, PASSWORD_BCRYPT);
                     $ins  = $pdo->prepare(
                         'INSERT INTO utisateur (pseudo, adresse_mail, mot_de_passe)
                          VALUES (?, ?, ?)'
                     );
                     $ins->execute([$pseudo, $email, $hash]);
+                    // On connecte l'utilisateur directement après son inscription
                     loginUser((int)$pdo->lastInsertId(), $pseudo);
                     header('Location: menu.php');
                     exit;
                 }
             }
         } else {
-            // login
+            // ── Connexion d'un utilisateur existant ──
             $pdo  = getDB();
             $stmt = $pdo->prepare(
                 'SELECT id, pseudo, mot_de_passe FROM utisateur WHERE pseudo = ?'
@@ -65,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$pseudo]);
             $user = $stmt->fetch();
 
+            // password_verify compare le mot de passe en clair avec le hash bcrypt
             if ($user && password_verify($password, $user['mot_de_passe'])) {
                 loginUser((int)$user['id'], $user['pseudo']);
                 header('Location: menu.php');
@@ -95,11 +103,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </header>
 
     <div class="auth-card">
+        <!-- Onglets pour basculer entre connexion et inscription -->
         <div class="tabs">
             <button class="tab <?= $mode === 'login' ? 'active' : '' ?>" data-mode="login">Sign In</button>
             <button class="tab <?= $mode === 'register' ? 'active' : '' ?>" data-mode="register">New Knight</button>
         </div>
 
+        <!-- Affichage des erreurs de validation ou d'authentification -->
         <?php if (!empty($errors)): ?>
             <div class="alert">
                 <?php foreach ($errors as $err): ?>
@@ -109,6 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <form method="post" class="auth-form" id="authForm" autocomplete="off">
+            <!-- Token CSRF caché pour protéger le formulaire -->
             <input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>">
             <input type="hidden" name="mode" id="modeInput" value="<?= e($mode) ?>">
 
@@ -119,6 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        pattern="[a-zA-Z0-9_-]+">
             </label>
 
+            <!-- Champ email visible uniquement à l'inscription -->
             <label class="field email-field" style="<?= $mode === 'register' ? '' : 'display:none' ?>">
                 <span>E-mail</span>
                 <input type="email" name="email" maxlength="60"
@@ -142,21 +154,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </main>
 
 <script>
+// Récupération des éléments du DOM pour gérer le basculement entre les onglets
 const tabs       = document.querySelectorAll('.tab');
 const modeInput  = document.getElementById('modeInput');
 const emailField = document.querySelector('.email-field');
 const submitLbl  = document.getElementById('submitLabel');
 const emailInput = emailField.querySelector('input');
 
+// Quand on clique sur un onglet, on met à jour le formulaire en conséquence
 tabs.forEach(tab => {
     tab.addEventListener('click', e => {
         e.preventDefault();
         const mode = tab.dataset.mode;
+        // On marque l'onglet actif et on désactive les autres
         tabs.forEach(t => t.classList.toggle('active', t === tab));
         modeInput.value = mode;
         const isRegister = mode === 'register';
+        // On affiche/masque le champ email selon le mode
         emailField.style.display = isRegister ? '' : 'none';
         emailInput.required = isRegister;
+        // On adapte le libellé du bouton de soumission
         submitLbl.textContent = isRegister ? 'Take the Oath' : 'Enter the Castle';
     });
 });

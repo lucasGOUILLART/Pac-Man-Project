@@ -1,4 +1,5 @@
 <?php
+// Page du bestiaire : présente les quatre fantômes gardiens avec leur histoire et comportement.
 require_once __DIR__ . '/includes/auth.php';
 requireLogin();
 ?>
@@ -20,7 +21,7 @@ requireLogin();
 </header>
 
 <main class="bestiary-shell">
-    <!-- Left: selected ghost portrait + tale -->
+    <!-- Colonne gauche : portrait en grand du fantôme sélectionné + son histoire -->
     <section class="best-left panel">
         <div class="best-portrait">
             <img id="bestPortrait" src="img/fantomeRougeCornes.png" alt="">
@@ -31,7 +32,7 @@ requireLogin();
         </div>
     </section>
 
-    <!-- Center: 4 ghost grid -->
+    <!-- Colonne centrale : grille de sélection des 4 fantômes -->
     <section class="best-grid panel">
         <button class="best-cell active" data-ghost="red">
             <img src="img/fantomeRougeCornes.png" alt="">
@@ -51,7 +52,7 @@ requireLogin();
         </button>
     </section>
 
-    <!-- Right: mechanical description -->
+    <!-- Colonne droite : description du comportement mécanique et barre de dangerosité -->
     <section class="best-right panel">
         <h3>BEHAVIOR</h3>
         <p id="bestDesc"></p>
@@ -61,6 +62,7 @@ requireLogin();
 </main>
 
 <script>
+// Données des quatre fantômes : histoire narrative, description mécanique et niveau de menace
 const GHOSTS = {
     red: {
         name: 'OMBRE ÉCARLATE',
@@ -96,12 +98,14 @@ const GHOSTS = {
     },
 };
 
+// Références aux éléments du DOM mis à jour lors de la sélection d'un fantôme
 const portrait = document.getElementById('bestPortrait');
 const nameEl   = document.getElementById('bestName');
 const taleEl   = document.getElementById('bestTale');
 const descEl   = document.getElementById('bestDesc');
 const threatEl = document.getElementById('bestThreat');
 
+// Met à jour l'affichage avec les données du fantôme sélectionné
 function selectGhost(key) {
     const g = GHOSTS[key];
     portrait.src = g.img;
@@ -109,17 +113,21 @@ function selectGhost(key) {
     nameEl.className = 'name-' + g.nameColor;
     taleEl.textContent = g.tale;
     descEl.textContent = g.desc;
+    // La largeur de la barre représente le pourcentage de dangerosité (0-100)
     threatEl.style.width = g.threat + '%';
     threatEl.className   = 'threat-' + g.nameColor;
+    // On marque la cellule active et on retire la classe des autres
     document.querySelectorAll('.best-cell').forEach(b => {
         b.classList.toggle('active', b.dataset.ghost === key);
     });
 }
 
+// On branche les événements sur les boutons de la grille de sélection
 document.querySelectorAll('.best-cell').forEach(b => {
     b.addEventListener('click', () => selectGhost(b.dataset.ghost));
 });
 
+// On affiche l'Ombre Écarlate par défaut au chargement de la page
 selectGhost('red');
 </script>
 </body>

@@ -1,4 +1,5 @@
 <?php
+// Page "Mes niveaux" : liste, lecture, export et suppression des niveaux créés par le joueur.
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/db.php';
 requireLogin();
@@ -6,7 +7,7 @@ requireLogin();
 $pdo    = getDB();
 $userId = currentUserId();
 
-// ── Fetch all levels owned by this user ─────────────────────────────────────
+// Récupération de tous les niveaux appartenant à cet utilisateur, du plus récent au plus ancien
 $stmt = $pdo->prepare('
     SELECT id, name, map, difficulte, score_max, solution_safe, is_public, created_at
     FROM niveau
@@ -16,18 +17,20 @@ $stmt = $pdo->prepare('
 $stmt->execute([$userId]);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// ── Parse gem/ghost counts from each map text ────────────────────────────────
+// Analyse du contenu d'une carte pour en extraire le nombre de gemmes et de fantômes
 function parseLevelMeta(string $map): array {
-    $gems   = substr_count($map, '.');
+    $gems   = substr_count($map, '.'); // Chaque '.' est une gemme dans le format de carte
     $ghosts = 0;
     foreach (explode("\n", $map) as $line) {
         $p = preg_split('/\s+/', trim($line));
-        if (isset($p[0]) && $p[0] === 'MAP') break;
+        if (isset($p[0]) && $p[0] === 'MAP') break; // On s'arrête au début de la grille
+        // R, G, Y, B sont les codes des quatre types de fantômes dans l'en-tête du niveau
         if (isset($p[0]) && in_array($p[0], ['R', 'G', 'Y', 'B'], true)) $ghosts++;
     }
     return ['gems' => $gems, 'ghosts' => $ghosts];
 }
 
+// On enrichit chaque niveau avec les métadonnées extraites de la carte
 $levels = [];
 foreach ($rows as $row) {
     $levels[] = array_merge($row, parseLevelMeta($row['map']));
@@ -42,7 +45,7 @@ $total = count($levels);
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Levels — Les fantômes d'Ombrequatre</title>
 <link rel="icon" type="image/png" href="img/logo.png">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body class="mylevels-body">
 <div class="vignette"></div>
@@ -54,7 +57,7 @@ $total = count($levels);
 
 <main class="mylevels-main">
 
-    <!-- Quick-create row -->
+    <!-- Barre d'actions rapides : créer ou générer un nouveau niveau -->
     <div class="mylevels-quickbar">
         <a class="menu-btn" href="editor.php"><span class="btn-icon">✎</span> CREATE IN EDITOR</a>
         <a class="menu-btn" href="generator.php"><span class="btn-icon">⚄</span> GENERATE RANDOM</a>
@@ -65,7 +68,7 @@ $total = count($levels);
     </div>
 
     <?php if ($total === 0): ?>
-    <!-- Empty state -->
+    <!-- État vide : le joueur n'a pas encore créé de niveau -->
     <div class="mylevels-empty panel">
         <p>You haven't saved any levels yet.</p>
         <p>Design one in the <a href="editor.php">Level Editor</a> or<br>
@@ -73,13 +76,14 @@ $total = count($levels);
     </div>
 
     <?php else: ?>
-    <!-- Level cards grid -->
+    <!-- Grille de cartes, une par niveau créé par le joueur -->
     <div class="mylevels-grid" id="levelGrid">
         <?php foreach ($levels as $lvl): ?>
         <article class="my-level-card panel" id="card-<?= $lvl['id'] ?>">
 
             <div class="mlc-header">
                 <h2 class="mlc-name"><?= e($lvl['name'] ?? 'Sans titre') ?></h2>
+                <!-- Badge PUBLIC ou BROUILLON selon la visibilité du niveau -->
                 <span class="mlc-badge <?= $lvl['is_public'] ? 'public' : 'draft' ?>">
                     <?= $lvl['is_public'] ? '● PUBLIC' : '○ DRAFT' ?>
                 </span>
@@ -100,6 +104,7 @@ $total = count($levels);
                 <?php endif; ?>
             </ul>
 
+            <!-- Actions disponibles pour chaque niveau -->
             <div class="mlc-actions">
                 <button class="menu-btn primary mlc-btn"
                         onclick="playLevel(<?= $lvl['id'] ?>)">▶ PLAY</button>
@@ -119,9 +124,11 @@ $total = count($levels);
 </main>
 
 <script>
+// Token CSRF exposé au JavaScript pour les requêtes API (suppression notamment)
 window.CSRF_TOKEN = <?= json_encode(csrfToken()) ?>;
 
-// Level data embedded for client-side Play and Export (avoids extra round-trips)
+// On embarque les données des niveaux côté client pour éviter des allers-retours
+// réseau lors du clic sur Jouer ou Exporter
 window.MY_LEVELS = <?= json_encode(array_map(
     fn($l) => ['id' => $l['id'], 'name' => $l['name'] ?? 'Sans titre', 'map' => $l['map']],
     $levels
@@ -129,7 +136,7 @@ window.MY_LEVELS = <?= json_encode(array_map(
 
 const STORAGE_KEY = 'ombrequatre_play_map';
 
-// ── Play ─────────────────────────────────────────────────────────────────────
+// Lance la lecture d'un niveau personnalisé en passant la carte via sessionStorage
 function playLevel(id) {
     const lvl = window.MY_LEVELS.find(l => l.id === id);
     if (!lvl) return;
@@ -137,12 +144,11 @@ function playLevel(id) {
     window.location.href = 'game.php?mode=custom';
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
+// Exporte la carte du niveau sous forme d'un fichier JSON téléchargeable
 function exportLevel(id) {
     const lvl = window.MY_LEVELS.find(l => l.id === id);
     if (!lvl) return;
     const payload = {
-        version:    1,
         name:       lvl.name || 'my-level',
         map:        lvl.map,
         exportedAt: new Date().toISOString(),
@@ -155,7 +161,7 @@ function exportLevel(id) {
     URL.revokeObjectURL(a.href);
 }
 
-// ── Delete ────────────────────────────────────────────────────────────────────
+// Supprime un niveau après confirmation, puis retire la carte du DOM avec une animation
 async function deleteLevel(id, cardEl) {
     if (!confirm('Delete this level? This cannot be undone.')) return;
 
@@ -167,10 +173,12 @@ async function deleteLevel(id, cardEl) {
     const data = await resp.json();
 
     if (data.ok) {
+        // Animation de disparition avant de retirer l'élément du DOM
         cardEl.classList.add('mlc-removing');
         setTimeout(() => {
             cardEl.remove();
             window.MY_LEVELS = window.MY_LEVELS.filter(l => l.id !== id);
+            // Si la grille est vide après suppression, on affiche un message d'état vide
             const grid = document.getElementById('levelGrid');
             if (grid && !grid.querySelector('.my-level-card')) {
                 grid.innerHTML =
