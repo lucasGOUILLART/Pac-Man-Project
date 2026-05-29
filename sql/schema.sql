@@ -262,4 +262,4 @@ MAP
 -- Remove this in production.
 -- =========================================================
 INSERT INTO `utisateur` (`pseudo`, `adresse_mail`, `mot_de_passe`, `niveau_actuel`, `score_total`) VALUES
-('demo', 'demo@example.com', '$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 1, 0);
+('demo', 'demo@example.com', '$2y$10$t3sEg3Q/JK0lCgZR3fAme.bXiLCIeTJn.uwPj/NV8nGHlZ/ixKTEm', 1, 0);

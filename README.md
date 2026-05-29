@@ -104,6 +104,8 @@ Un compte de démonstration est créé lors de l'import du schéma :
 
 > **En production**, supprimer ce compte en retirant la ligne `INSERT INTO utisateur` à la fin de `sql/schema.sql` avant de réimporter.
 
+> Si vous avez déjà importé l'ancien schéma, réimportez `schema.sql` pour obtenir le hash corrigé (ou mettez à jour manuellement le mot de passe en base).
+
 ---
 
 ## Structure du projet
